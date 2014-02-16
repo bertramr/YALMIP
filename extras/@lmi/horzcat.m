@@ -13,8 +13,7 @@ for i=1:1:nargin
     elseif isa(varargin{i},'optproblem')
         F = [varargin{i},F,varargin{i+1:end}];
         return;
-    else
-        H = set(varargin{i});
-        F = F + H;
-    end
+    end       
 end
+tmp = cellfun(@set,varargin,'UniformOutput',false);
+F = plus(tmp{:});

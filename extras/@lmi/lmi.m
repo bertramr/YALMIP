@@ -1,7 +1,7 @@
 function F = lmi(X,handlestring,dummy,noprune,symmetryKnown)
 % The command lmi is obsolete, see help sdpvar/set
 
-% Author Johan Löfberg
+% Author Johan Lï¿½fberg
 % $Id: lmi.m,v 1.34 2009-05-29 08:05:12 joloef Exp $
 
 superiorto('sdpvar')
@@ -244,28 +244,22 @@ if ~exist('LMIIdentifiers','var')
    LMIIdentifiers = yalmip('lmiid');
 end
 
-if all(TypeofConstraint == 2) & all(strict==strict(1))
+if all(TypeofConstraint == 2) && all(strict==strict(1))
     if length(Fi)>1
         vecF = [];
         sizes = zeros(length(Fi),1);
         % Speed up concatenation of merging
         for i = 1:length(Fi)
-            sizes(i) = prod(size(Fi{i}));
+            sizes(i) = numel(Fi{i});
         end
         if all(sizes == 1)
             vecF = [Fi{:}]';
         else
-            for i = 1:length(Fi)
-                fi = Fi{i};
-                if sizes(i) > 1
-                    %             fi = Fi{i};fi = reshape(fi,sizes(i),1);
-                    fi = reshape(fi,prod(size(fi)),1);
-                end
-                vecF = [vecF;fi];
-            end
+            fi = cellfun(@(x) reshape(x, numel(x), 1),Fi,'UniformOutput',false);
+            vecF = [fi{:}]';
         end
     else
-        vecF = reshape(Fi{1},prod(size(Fi{1})),1);
+        vecF = reshape(Fi{1},numel(Fi{1}),1);
     end
     F.clauses{1}.data=vecF;
     F.clauses{1}.type = 2;

@@ -82,7 +82,7 @@ end
 if isa(x,'cell')
     xvec = [];
   for i = 1:length(x)
-      if ~(isa(x{i},'sdpvar') | isa(x{i},'ndsdpvar'))
+      if ~(isa(x{i},'sdpvar') || isa(x{i},'ndsdpvar'))
           error(['The parameters must be SDPVAR objects. Parameter #' num2str(i) ' is a ' upper(class(x{i}))]);
       end
       if is(x{i},'complex')
@@ -113,7 +113,6 @@ nIn = length(x);
 mIn = 1;
 
 if isa(u,'cell')
-    uvec = []; 
     for i = 1:length(u)        
         if is(u{i},'complex')
             complexOutput(i) = 1;
@@ -122,9 +121,9 @@ if isa(u,'cell')
             complexOutput(i) = 0;
         end        
         sizeOrigOut{i} = size(u{i});
-        uvec = [uvec;u{i}(:)];
     end
-    u = uvec;
+    tmp = cellfun(@(x)reshape(x,[],1),u,'UniformOutput',false);
+    u = vertcat(tmp{:});
 else
     if is(u,'complex')
         complexOutput(1) = 1;
@@ -159,7 +158,7 @@ if isa(Constraints,'constraint')
 end
 
 if ~isempty(Constraints)
-    if ~isa(Constraints,'constraint') &  ~isa(Constraints,'lmi')
+    if ~isa(Constraints,'constraint') &&  ~isa(Constraints,'lmi')
         error('The first argument in OPTIMIZER should be a set of constraints');
     end
 end
@@ -181,11 +180,11 @@ if ~isequal(options.solver,'')
     end
 end
 
-if ~isempty(Constraints) & any(is(Constraints,'uncertain'))
+if ~isempty(Constraints) && any(is(Constraints,'uncertain'))
     [Constraints,Objective,failure] = robustify(Constraints,Objective,options);
-    [aux1,aux2,aux3,model] = export(set(x == repmat(pi,nIn*mIn,1))+Constraints,Objective,options,[],[],0);
+    [~,aux2,aux3,model] = export(set(x == repmat(pi,nIn*mIn,1))+Constraints,Objective,options,[],[],0);
 else
-    [aux1,aux2,aux3,model] = export(set(x == repmat(pi,nIn*mIn,1))+Constraints,Objective,options,[],[],0);    
+    [~,aux2,aux3,model] = export(set(x == repmat(pi,nIn*mIn,1))+Constraints,Objective,options,[],[],0);    
 end
 
 if ~isempty(aux3)
@@ -202,7 +201,7 @@ end
 
 % Try to set up an optimal way to compute the output
 base = getbase(u);
-if is(u,'linear') & all(sum(base | base,2) == 1) & all(sum(base,2)==1) & all(base(:,1)==0)
+if is(u,'linear') && all(sum(base | base,2) == 1) && all(sum(base,2)==1) && all(base(:,1)==0)
     % This is just a vecotr of variables
     z = [];
     map = [];
@@ -220,19 +219,18 @@ else
     % Some expression which we will use assign and double to evaluate
     vars = depends(u);
     z = recover(vars);    
-    map = [];
-    for i = 1:length(z)        
+    map = zeros(length(z),1);
+    used = model.used_variables;
+    parfor i = 1:length(z)        
         var = vars(i);
-        mapIndex = find(var == model.used_variables);
+        mapIndex = find(var == used);
         if ~isempty(mapIndex)
-            map = [map;mapIndex];
-        else
-            map = [map;0];
+            map(i) = mapIndex;
         end
     end        
 end
 
-if isempty(map) | min(size(map))==0
+if isempty(map) || min(size(map))==0
     error('The requested decision variable (argument 4) is not in model');
 end
 
@@ -259,9 +257,10 @@ sys.output.z = z;
 % Could be done using
 % [b,a,c] = find(sys.model.F_struc(1:prod(sys.dimin),2:end)');
 % but let us be safe
-b = [];
-for i = 1:prod(sys.dimin)
-    b = [b;find(sys.model.F_struc(i,2:end))];
+b = zeros(nnz(sys.model.F_struc(1:prod(sys.dimin),2:end)),1);
+fstruc = sys.model.F_struc(:,2:end);
+parfor i = 1:prod(sys.dimin)
+    b(i) = find(fstruc(i,:));
 end
 sys.parameters = b;
 used_in = find(any(sys.model.monomtable(:,b),2));
@@ -275,7 +274,7 @@ if nnz(Q)>0
 else
     problematicQP = 0;
 end
-if any(sum(sys.model.monomtable(used_in,:) | sys.model.monomtable(used_in,:),2) > 1 | problematicQP) | ~isempty(sys.model.evalMap)
+if any(sum(sys.model.monomtable(used_in,:) | sys.model.monomtable(used_in,:),2) > 1 | problematicQP) || ~isempty(sys.model.evalMap)
     sys.nonlinear = 1;
 else
     sys.nonlinear = 0;
@@ -295,8 +294,8 @@ sys.model.precalc.newmonomtable(:,sys.parameters) = 0;
 sys.model.precalc.Qmap = [];
 % R2012b...
 try
-   % [ii,jj,kk] = unique(sys.model.precalc.newmonomtable*gen_rand_hash(0,size(sys.model.precalc.newmonomtable,2),1),'rows','stable');
-    [ii,jj,kk] = stableunique(sys.model.precalc.newmonomtable*gen_rand_hash(0,size(sys.model.precalc.newmonomtable,2),1));
+    [ii,jj,kk] = unique(sys.model.precalc.newmonomtable*gen_rand_hash(0,size(sys.model.precalc.newmonomtable,2),1),'rows','stable');
+ %   [ii,jj,kk] = stableunique(sys.model.precalc.newmonomtable*gen_rand_hash(0,size(sys.model.precalc.newmonomtable,2),1));
  %   [ii,jj,kk] = unique(sys.model.precalc.newmonomtable,'rows','stable');
     sys.model.precalc.S = sparse(kk,1:length(kk),1);
     sys.model.precalc.skipped = setdiff(1:length(kk),jj);    
@@ -349,7 +348,7 @@ end
 
 sys = class(sys,'optimizer');
 
-function i = uniqueRows(x);
+function i = uniqueRows(x)
 B = getbase(x);
-[temp,i,j] = unique(B,'rows');
+[~,i,j] = unique(B,'rows');
 i = i(:);

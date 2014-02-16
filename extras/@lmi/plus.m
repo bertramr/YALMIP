@@ -1,7 +1,7 @@
 function X = plus(X,Y)
 %PLUS Merges two LMI objects to one LMI
 
-% Author Johan Löfberg
+% Author Johan Lï¿½fberg
 % $Id: plus.m,v 1.10 2006-08-10 13:15:45 joloef Exp $
 
 if isa(X,'constraint')
@@ -25,7 +25,7 @@ elseif isempty(Y)
     return
 end
 
-if ~((isa(X,'lmi')) & (isa(Y,'lmi')))
+if ~((isa(X,'lmi')) && (isa(Y,'lmi')))
     error('Both arguments must be SET objects')
 end
 
@@ -39,9 +39,7 @@ if nY == 0
     return;
 end
 
-for i = 1:length(Y.clauses)
-    X.clauses{end+1} = Y.clauses{i};
-end
+X.clauses = [X.clauses Y.clauses];
 
 X.LMIid = [X.LMIid Y.LMIid];
 
