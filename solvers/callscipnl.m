@@ -1,4 +1,4 @@
-function output = callbaron(model)
+function output = callscipnl(model)
 
 % This sets up everything and more. Can be simplified significantly since
 % baron handles its own computational tree etc
@@ -64,21 +64,26 @@ xtype = repmat('C',length(lb),1);
 xtype(model.binary_variables) = 'B';
 xtype(model.integer_variables) = 'I';
 x0 = model.x0;
-opts = model.options.baron;
-opts.prlevel = model.options.verbose;
+opts = model.options.scip;
+switch model.options.verbose
+    case 0
+        opts.display = 'off';
+    otherwise
+        opts.display = 'iter';
+end
 if model.options.savedebug    
-    save barondebug obj con A ru rl cl cu lb ub x0 opts
+    save scipnldebug obj con A ru rl cl cu lb ub x0 opts
 end
 
 solvertime = clock;
-[x,fval,exitflag,info,allsol] = baron(obj,A,rl,ru,lb,ub,con,cl,cu,xtype,x0,opts);
+[x,fval,exitflag,info] = opti_scipnl(obj,A,rl,ru,lb,ub,con,cl,cu,xtype,[],opts);%,x0,opts);
 solvertime = etime(clock,solvertime);
 
 % Check, currently not exhaustive...
 switch exitflag
     case 1
         problem = 0;
-    case 2
+    case {2,-1}
         problem = 1;
     case 3
         problem = 2;
@@ -121,7 +126,7 @@ if ~isempty(x)
 end
 
 % Standard interface
-output = createoutput(x,[],[],problem,'BARON',solverinput,solveroutput,solvertime);
+output = createoutput(x,[],[],problem,'SCIP-NL',solverinput,solveroutput,solvertime);
 
 
 

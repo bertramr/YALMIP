@@ -197,6 +197,7 @@ do_not_convert = any(variabletype(F_vars)==4);
 %do_not_convert = do_not_convert | ~solverCapable(solvers,options.solver,'constraint.inequalities.secondordercone');
 do_not_convert = do_not_convert | strcmpi(options.solver,'bmibnb');
 do_not_convert = do_not_convert | strcmpi(options.solver,'snopt');
+do_not_convert = do_not_convert | strcmpi(options.solver,'knitro');
 do_not_convert = do_not_convert | strcmpi(options.solver,'snopt-geometric'); 
 do_not_convert = do_not_convert | strcmpi(options.solver,'snopt-standard');
 do_not_convert = do_not_convert | strcmpi(options.solver,'ipopt');
@@ -273,9 +274,8 @@ if length(solver.version)>0
     solver.tag = [solver.tag '-' solver.version];
 end
 
-if ProblemClass.constraint.complementarity.linear | ProblemClass.constraint.complementarity.nonlinear
-    if ~(solver.constraint.complementarity.linear | solver.constraint.complementarity.nonlinear)
-               
+if ProblemClass.constraint.complementarity.variable | ProblemClass.constraint.complementarity.linear | ProblemClass.constraint.complementarity.nonlinear
+    if ~(solver.constraint.complementarity.variable | solver.constraint.complementarity.linear | solver.constraint.complementarity.nonlinear)               
         % Extract the terms in the complementarity constraints x^Ty==0,
         % x>=0, y>=0, since these involves bounds that should be appended
         % to the list of constraints from which we do bound propagation
@@ -291,6 +291,23 @@ if ProblemClass.constraint.complementarity.linear | ProblemClass.constraint.comp
         [F] = modelComplementarityConstraints(F,solver,ProblemClass);  
         % FIXME Reclassify should be possible to do manually!
         [ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars);
+    elseif solver.constraint.complementarity.variable
+        % Solver supports x(i)*x(j)==0
+        Fok = [];
+        Freform = [];
+        Fc = F(find(is(F,'complementarity')));              
+        for i = 1:length(Fc)
+            [Cx,Cy] = getComplementarityTerms(Fc(i));
+            if (islinear(Cx) & islinear(Cy) & is(Cx,'lpcone') &  is(Cy,'lpcone'))
+             Fok = [Fok, Fc(i)];
+            else
+                s1 = sdpvar(length(Cx),1);
+                s2 = sdpvar(length(Cy),1);                
+                Freform = [Freform,complements(s1>=0,s2>=0),s1 == Cx, s2 == Cy];
+            end            
+        end   
+        F = F-Fc;
+        F = F + Fok + Freform;
     end
 end
 
@@ -431,16 +448,24 @@ if strcmpi(solver.tag,'cutsdp')
 
     % Relax problem for lower solver
     tempProblemClass = ProblemClass;
-    tempProblemClass.constraint.inequalities.elementwise.linear =  tempProblemClass.constraint.inequalities.elementwise.linear |     tempProblemClass.constraint.inequalities.semidefinite.linear | tempProblemClass.constraint.inequalities.secondordercone;
+    tempProblemClass.constraint.inequalities.elementwise.linear =  tempProblemClass.constraint.inequalities.elementwise.linear |     tempProblemClass.constraint.inequalities.semidefinite.linear | tempProblemClass.constraint.inequalities.secondordercone.linear;
     tempProblemClass.constraint.inequalities.semidefinite.linear = 0;
-    tempProblemClass.constraint.inequalities.secondordercone = 0;
+    tempProblemClass.constraint.inequalities.secondordercone.linear = 0;
     tempProblemClass.objective.quadratic.convex = 0;
     
     temp_options = options;
     temp_options.solver = options.cutsdp.solver;
 
+    if strcmp(options.cutsdp.solver,'bnb')
+        error('BNB can not be used in CUTSDP. Please install and use a better MILP solver');
+    end
+    
     [lowersolver,problem] = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
 
+    if ~isempty(lowersolver) & strcmpi(lowersolver.tag,'bnb')
+        error('BNB can not be used in CUTSDP. Please install and use a better MILP solver');
+    end
+        
     if isempty(lowersolver) | strcmpi(lowersolver.tag,'cutsdp') |strcmpi(lowersolver.tag,'bmibnb') | strcmpi(lowersolver.tag,'bnb')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');

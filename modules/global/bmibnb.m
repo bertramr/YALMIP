@@ -85,6 +85,7 @@ n_in = length(p.c);
 % *************************************************************************
 % Extract bounds from model using direct information available
 % *************************************************************************
+p = compile_nonlinear_table(p);
 p = presolve_bounds_from_domains(p);
 p = presolve_bounds_from_modelbounds(p);
 p = presolve_bounds_from_quadratics(p);
@@ -113,6 +114,9 @@ p = update_monomial_bounds(p);
 % theoretically any reason to do so, but practical performance is better
 % *************************************************************************
 p = diagonalize_quadratic_program(p);
+if p.diagonalized
+    p = compile_nonlinear_table(p);
+end
 
 % *************************************************************************
 % Try to generate a feasible solution, by using avialable x0 (if usex0=1),
@@ -120,7 +124,6 @@ p = diagonalize_quadratic_program(p);
 % that we do this here before the problem possibly is bilinearized, thus
 % avoiding to introduce possibly complicating bilinear constraints
 % *************************************************************************
-p = compile_nonlinear_table(p);
 [p,x_min,upper] = initializesolution(p);
 
 % *************************************************************************
@@ -170,6 +173,9 @@ if (p.solver.uppersolver.constraint.equalities.polynomial &  p.solver.uppersolve
 else
     p = p_bilin;
     p.originalModel = p_bilin;
+end
+if changed
+    p = compile_nonlinear_table(p);
 end
 
 p.EqualityConstraintState = ones(p.K.f,1);

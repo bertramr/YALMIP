@@ -1072,6 +1072,19 @@ else
     end
     
     try
+        options.knitro = optimset;
+        options.knitro.optionsfile = '';
+        cNames = recursivefieldnames(options.knitro);
+        for i = 1:length(cNames)
+            Names{end+1} = ['knitro.' cNames{i}];
+        end
+        [m,n] = size(Names);
+        names = lower(Names);
+    catch
+       options.knitro.optionsfile = '';
+    end
+    
+    try
         % OPTI Toolbox interface
         options.csdp = csdpset();
         
@@ -1102,6 +1115,18 @@ else
         options.csdp.minstepd = 1e-8;
         options.csdp.usexzgap = 1;
         options.csdp.tweakgap = 0;
+    end
+        
+    try
+        options.scip = optiset;
+        cNames = recursivefieldnames(options.scip);
+        for i = 1:length(cNames)
+            Names{end+1} = ['scip.' cNames{i}];
+        end
+        [m,n] = size(Names);
+        names = lower(Names);
+    catch
+        options.scip = [];
     end
     
     try
@@ -1160,6 +1185,19 @@ else
     catch
         options.mosek.param = [];
     end
+    
+    try
+        options.penlab = penlab.defopts(1);
+        cNames = recursivefieldnames(options.penlab);
+        for i = 1:length(cNames)
+            Names{end+1} = ['penlab.' cNames{i}];
+        end
+        [m,n] = size(Names);
+        names = lower(Names);
+    catch
+        options.penlab = [];
+    end
+    
     
 %     options.csdp.axtol  = 1e-8;
 %     options.csdp.atytol = 1e-8;

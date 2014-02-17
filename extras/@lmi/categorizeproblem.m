@@ -58,6 +58,7 @@ problem.constraint.inequalities.secondordercone.nonlinear = 0;
 problem.constraint.inequalities.rotatedsecondordercone = 0;
 problem.constraint.inequalities.powercone = 0;
 
+problem.constraint.complementarity.variable = 0;
 problem.constraint.complementarity.linear = 0;
 problem.constraint.complementarity.nonlinear = 0;
 
@@ -130,6 +131,8 @@ any_discrete_variables = ~isempty(integer_variables) | ~isempty(binary_variables
 
 interval_data = isinterval(h);
 
+problem.constraint.equalities.multiterm = 0;
+
 for i = 1:Counter
     
     Fi = F.clauses{i};
@@ -150,13 +153,16 @@ for i = 1:Counter
         rank_constraint = rank_constraint | any(ismember(getvariables(Fi.data),rank_variables));
     end
     
-    % Check for equalities violating GP definition
-%     problem.constraint.equalities.multiterm = 0;
-%     if Fi.type==3
-%         if multipletermsInEquality(Fi)
-%              problem.constraint.equalities.multiterm = 1;
-%         end
-%     end
+    % Check for equalities violating GP definition    
+    if problem.constraint.equalities.multiterm == 0
+        if Fi.type==3
+            if isempty(strfind(Fi.handle,'Expansion of'))
+                if multipletermsInEquality(Fi)
+                    problem.constraint.equalities.multiterm = 1;
+                end
+            end
+        end
+    end
     
     if ~any_nonlinear_variables % No nonlinearly parameterized constraints
         
@@ -455,7 +461,6 @@ function p = multipletermsInEquality(Fi);
 p = 0;
 Fi = sdpvar(Fi.data);
 if length(getvariables(Fi))>1
-    B = getbase(Fi);
-    B(:,1)=0;
-    p = any(sum(B | B,2)>1);
+    B = getbase(Fi);     
+    p = any(sum(B | B,2)-(B(:,1) == 0) > 1);    
 end

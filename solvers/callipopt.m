@@ -29,23 +29,6 @@ Flow = [ repmat(-inf,length(model.bnonlinineq),1);
     repmat(-inf,length(model.b),1);
     repmat(0,length(model.beq),1)];
 
-% options.A = [model.A;model.Aeq];
-% options.ru = [repmat(0,length(model.b),1);
-%               repmat(0,length(model.beq),1)];
-% options.rl = [repmat(-inf,length(model.b),1);
-%               repmat(0,length(model.beq),1)];
-% 
-% Fupp = [ repmat(0,length(model.bnonlinineq),1);
-%     repmat(0,length(model.bnonlineq),1)];
-% 
-% Flow = [ repmat(-inf,length(model.bnonlinineq),1);
-%     repmat(0,length(model.bnonlineq),1)];
-% 
-% model.A = [];
-% model.Aeq = [];
-% model.b = [];
-% model.beq = [];
-
 if isempty(Flow)
     Flow = [];
     Fupp = [];
@@ -105,7 +88,20 @@ if ~model.options.usex0
     model.x0(isinf(options.lb)) = options.ub(isinf(options.lb))-1;
     model.x0(isinf(model.x0)) = 0;
 end
-    
+
+% If quadratic objective and no nonlinear constraints, we can supply an
+% Hessian of the Lagrangian
+usedinObjective = find(model.c | any(model.Q,2));
+if ~any(model.variabletype(usedinObjective)) & any(model.Q)
+    if  length(model.bnonlinineq)==0 & length(model.bnonlineq)==0
+        H = model.Q(:,model.linearindicies);
+        H = H(model.linearindicies,:);
+        funcs.hessian = @(x,s,l) tril(2*H);
+        funcs.hessianstructure = @()tril(sparse(double(H | H)));      
+        options.ipopt.hessian_approximation = 'exact';
+    end
+end
+
 solvertime = clock;
 [xout,info] = ipopt(model.x0,funcs,options);
 solvertime = etime(clock,solvertime);

@@ -13,5 +13,19 @@ end
 % bound on x. Sort of ugly...The problem is that we only get operator
 % knowledge when we model the operator, nor before we start the whole
 % algorithm
-LU = extract_bounds_from_abs_operator(LU,yalmip('extstruct'),extendedvariables);
+% This should be generalized, operator.derivebounds
+extstruct = yalmip('extstruct');
+for i = 1:length(extstruct)
+    switch extstruct(i).fcn
+        case 'abs'
+            LU = extract_bounds_from_abs_operator(LU,extstruct,extendedvariables,i);
+        case 'norm'
+            LU = extract_bounds_from_norm_operator(LU,extstruct,extendedvariables,i);
+        case 'min_internal'
+            LU = extract_bounds_from_min_operator(LU,extstruct,extendedvariables,i);
+        case 'max_internal'
+            LU = extract_bounds_from_max_operator(LU,extstruct,extendedvariables,i);
+        otherwise
+    end
+end
 yalmip('setbounds',1:nv,LU(:,1),LU(:,2));
