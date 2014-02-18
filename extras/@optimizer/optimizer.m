@@ -204,15 +204,18 @@ base = getbase(u);
 if is(u,'linear') && all(sum(base | base,2) == 1) && all(sum(base,2)==1) && all(base(:,1)==0)
     % This is just a vecotr of variables
     z = [];
-    map = [];
     uvec = u(:);
+    map = zeros(length(uvec),1);
+    vars = zeros(length(uvec),1);
+    used = model.used_variables;
     for i = 1:length(uvec)
-        var = getvariables(uvec(i));
-        mapIndex = find(var == model.used_variables);
+        vars(i) = getvariables(uvec(i));
+    end
+    parfor i = 1:length(uvec)
+        var = vars(i);
+        mapIndex = find(var == used);
         if ~isempty(mapIndex)
-            map = [map;mapIndex];
-        else
-            map = [map;0];
+            map(i) = mapIndex;
         end
     end
 else
