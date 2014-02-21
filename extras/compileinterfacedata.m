@@ -252,6 +252,18 @@ end
 % *************************************************************************
 [ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars);
 
+% Ugly fix to short-cut any decision on GP. min -x-y cannot be cast as GP,
+% while min -x can, as we can invert the objective
+ProblemClass.gppossible = 1;
+if ~isempty(h)
+    c = getbase(h);c = c(2:end);
+    if nnz(c)>1
+     if any(c<0)
+         ProblemClass.gppossible = 0;
+     end
+    end
+end
+   
 % *************************************************************************
 %% SELECT SUITABLE SOLVER
 % *************************************************************************
@@ -290,7 +302,9 @@ if ProblemClass.constraint.complementarity.variable | ProblemClass.constraint.co
                         
         [F] = modelComplementarityConstraints(F,solver,ProblemClass);  
         % FIXME Reclassify should be possible to do manually!
+        oldProblemClass = ProblemClass;
         [ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars);
+        ProblemClass.gppossible = oldProblemClass.gppossible;
     elseif solver.constraint.complementarity.variable
         % Solver supports x(i)*x(j)==0
         Fok = [];
@@ -543,7 +557,7 @@ end
 old_binary_variables = binary_variables;
 if ~isempty(binary_variables) & (solver.constraint.binary==0)
     x_bin = recover(binary_variables(ismember(binary_variables,unique([getvariables(h) getvariables(F)]))));
-    F = F + set(x_bin<1)+set(x_bin>0);
+    F = F + set(x_bin<=1)+set(x_bin>=0);
     integer_variables = union(binary_variables,integer_variables);
     binary_variables = [];
 end
