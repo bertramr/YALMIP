@@ -83,6 +83,11 @@ if str2num(interfacedata.solver.subversion)>=12.3
         options.cplex.diagnostics = 'off';
     end
 end
+if str2num(interfacedata.solver.subversion)>=12.6
+    % Bug in 12.6 regarding display options. Hence, we turn it on and then run
+    % silently by redirecting output instead
+    options.cplex.Display = 'on';
+end
 
 if ~isempty(K.sos.type)
     for i = 1:length(K.sos.weight)
