@@ -1,25 +1,34 @@
-function [model,keptvariables,infeasible] = eliminatevariables(model,varindex,value)
+function [model,keptvariablesIndex] = eliminatevariables(model,removedparameters,value,parameters)
+    
+if isempty(removedparameters) 
+    keptvariablesIndex = 1:length(model.c);
+    return
+end
 
-keptvariables = 1:length(model.c);
+keptvariablesIndex = 1:length(model.c);
 
 rmvmonoms = model.rmvmonoms;
 newmonomtable = model.newmonomtable;
 
 % Assign evaluation-based values
 if length(model.evalParameters > 0)
-    alls = union(varindex,model.evalParameters);
-    [dummy,loc] = ismember(varindex,alls);
-    remappedvalue = zeros(length(alls),1);
-    remappedvalue(loc) = value;
-    for i = 1:length(model.evalMap)
-        j = find(model.evalMap{i}.variableIndex == varindex);
-        if ~isempty(j)
-            p = value(j);
-             [dummy,loc] = ismember(model.evalMap{i}.computes,alls);
-            remappedvalue(loc) = feval(model.evalMap{i}.fcn,p);
+    alls = [removedparameters(:)' model.evalParameters(:)'];  
+    removedP = [];
+    removedE = [];
+    for j = 1:length(removedparameters)
+        for i = 1:length(model.evalMap)
+            if isequal(model.evalMap{i}.variableIndex,removedparameters(j))
+                p = value(j);
+                index = find(model.evalMap{i}.computes == alls);
+                value(index) = feval(model.evalMap{i}.fcn,p);
+                removedP = [removedP model.evalMap{i}.computes];
+                removedE = [removedE i];            
+            end
         end
     end
-    value = remappedvalue;
+    model.evalVariables(removedE)=[];
+    model.evalMap = {model.evalMap{setdiff(1:length(model.evalMap),removedE)}};
+    model.evalParameters = setdiff(model.evalParameters,removedP);
 end
 
 % Evaluate fixed monomial terms
@@ -38,6 +47,22 @@ monomvalue = prod(aux,2);
 removethese = model.removethese;
 keepingthese = model.keepingthese;
 
+% Look for constraints which evaluate to inf + a'*x + b >= 0
+infinite_monoms = removethese(isinf(monomvalue(removethese)));
+if ~isempty(infinite_monoms)
+    if model.K.l > 0
+        A = model.F_struc(model.K.f + 1:model.K.f + model.K.l,1 + infinite_monoms);
+        redundant = find(all(A,2));
+        model.F_struc(model.K.f + redundant,:)=[];
+        model.K.l = model.K.l - length(redundant);
+    end
+    % If that infinite variable is used nowhere else, simply zero it so we
+    % don't get any inf*0 expressions as these leads to nan
+    if ~any(model.F_struc(:,1+infinite_monoms))
+        monomvalue(infinite_monoms)=0;
+    end
+end
+
 value = monomvalue(removethese);
 monomgain = monomvalue(keepingthese);
 
@@ -53,7 +78,7 @@ if model.K.f > 0
     if ~isempty(candidates)
         % infeasibles = find(model.F_struc(candidates,1)~=0);
         if find(model.F_struc(candidates,1)~=0,1)%;~isempty(infeasibles)
-            infeasible = 1;
+            model.infeasible = 1;
             return
         else
             model.F_struc(candidates,:) = [];
@@ -62,18 +87,22 @@ if model.K.f > 0
     end
 end
 if model.K.l > 0
+    % Find infeasible constraints
     candidates = find(~any(model.F_struc(model.K.f + (1:model.K.l),2:end),2));
-    %candidates = find(sum(abs(model.F_struc(model.K.f + (1:model.K.l),2:end)),2) == 0);
-    if ~isempty(candidates)
-        
-        %if find(model.F_struc(model.K.f + candidates,1)<0,1)
+    if ~isempty(candidates)                
         if any(model.F_struc(model.K.f + candidates,1)<-1e-14)
-            infeasible = 1;
+            model.infeasible  = 1;
             return
         else
             model.F_struc(model.K.f + candidates,:) = [];
             model.K.l = model.K.l - length(candidates);
         end
+    end
+    % Find constraints f(x) <= inf and remove these
+    candidates = find(isinf(model.F_struc(model.K.f + (1:model.K.l),1)) & (model.F_struc(model.K.f + (1:model.K.l),1))>0);
+    if ~isempty(candidates)                       
+        model.F_struc(model.K.f + candidates,:) = [];
+        model.K.l = model.K.l - length(candidates);        
     end
 end
 if model.K.q(1) > 0
@@ -91,7 +120,7 @@ if model.K.q(1) > 0
             v = F_struc(rows,:);
             if nnz(v(:,2:end))==0
                 if norm(v(2:end,1)) > v(1,1)
-                    infeasible = 1;
+                    model.infeasible = 1;
                     return
                 else
                     removeqs = [removeqs;i];
@@ -107,20 +136,24 @@ if model.K.q(1) > 0
         end
     end
 end
-if model.K.s(1) > 0
-    % This code cannot occur yet, so untested
+if model.K.s(1) > 0  
     % Nonlinear semidefinite program with parameter
     top = model.K.f + model.K.l + sum(model.K.q) + 1;
     removeqs = [];
     removeRows = [];
-    for i = 1:length(model.K.q)
+    for i = 1:length(model.K.s)
         n = model.K.s(i);
         rows = top:top+n^2-1;
         v = model.F_struc(rows,:);
-        if nnz(v(:,2:end))==0
-            [~,p] = chol(reshape(v(:,1),n,n));
+        if nnz(v)==0
+            removeqs = [removeqs;i];
+            removeRows = [removeRows;rows];
+        elseif nnz(v(:,2:end))==0
+            Q = reshape(v(:,1),n,n);
+            used = find(any(Q));Qred=Q(:,used);Qred = Qred(used,:);
+            [~,p] = chol(Qred);
             if p
-                infeasible = 1;
+                model.infeasible = 1;
                 return
             else
                 removeqs = [removeqs;i];
@@ -131,8 +164,8 @@ if model.K.s(1) > 0
     end
     model.K.s(removeqs)=[];
     model.F_struc(removeRows,:)=[];
-    if isempty(model.K.q)
-        model.K.q = 0;
+    if isempty(model.K.s)
+        model.K.s = 0;
     end
 end
 
@@ -141,12 +174,17 @@ model.f = model.f + model.c(removethese)'*value;
 model.c(removethese)=[];
 if nnz(model.Q)>0
     model.c = model.c + 2*model.Q(keepingthese,removethese)*value;
+    model.f = model.f + value'*model.Q(removethese,removethese)*value;
 end
-model.Q(removethese,:) = [];
-model.Q(:,removethese) = [];
 
+if nnz(model.Q)==0
+    model.Q = spalloc(length(model.c),length(model.c),0);
+else
+    model.Q(removethese,:) = [];
+    model.Q(:,removethese) = [];
+end
 model.c = model.c.*monomgain;
-keptvariables(removethese) = [];
+keptvariablesIndex(removethese) = [];
 
 model.lb(removethese)=[];
 model.ub(removethese)=[];
@@ -156,11 +194,10 @@ newmonomtable(removethese,:) = [];
 
 if ~isequal(newmonomtable,model.precalc.newmonomtable)%~isempty(removethese)
     skipped = [];
-    alreadyAdded = zeros(1,size(newmonomtable,1));      
-    %[ii,jj,kk] = unique(newmonomtable*gen_rand_hash(0,size(newmonomtable,2),1),'rows','stable');
-    [ii,jj,kk,skipped] = stableunique(newmonomtable*gen_rand_hash(0,size(newmonomtable,2),1));   
-    S = sparse(kk,1:length(kk),1);
-   % skipped = setdiff(1:length(kk),jj);
+    alreadyAdded = zeros(1,size(newmonomtable,1));         
+    [ii,jj,kk,skipped] = stableunique(newmonomtable*model.hashCache(1:size(newmonomtable,2)));   
+    %[ii,jj,kk,skipped] = stableunique(newmonomtable*gen_rand_hash(0,size(newmonomtable,2),1));   
+    S = sparse(kk,1:length(kk),1);   
     model.precalc.S = S;
     model.precalc.skipped = skipped;
     model.precalc.newmonomtable = newmonomtable;
@@ -170,19 +207,24 @@ else
     skipped = model.precalc.skipped;
 end
 model.c = S*model.c;
-%model.F_struc2 = [model.F_struc(:,1) (S*model.F_struc(:,2:end)')'];
 if ~isempty(model.F_struc)
-    model.F_struc = model.F_struc*model.precalc.blkOneS;%blkdiag(1,S');
+    model.F_struc = model.F_struc*model.precalc.blkOneS;
 end
-%norm(model.F_struc-model.F_struc2)
 
 model.lb(skipped) = [];
 model.ub(skipped) = [];
 newmonomtable(skipped,:) = [];
 newmonomtable(:,skipped) = [];
-model.Q(:,skipped)=[];
-model.Q(skipped,:)=[];
-keptvariables(skipped) = [];
+
+
+if nnz(model.Q)==0
+    model.Q = spalloc(length(model.c),length(model.c),0);
+else
+    model.Q(:,skipped)=[];
+    model.Q(skipped,:)=[];
+end
+
+keptvariablesIndex(skipped) = [];
 
 model.monomtable = newmonomtable;
 model = compressModel(model);
@@ -191,7 +233,7 @@ x0wasempty = isempty(model.x0);
 model.x0 = zeros(length(model.c),1);
 
 % Try to reduce to QP
-[model,keptvariables,newmonomtable] = setupQuadratics(model,keptvariables,newmonomtable);
+[model,keptvariablesIndex,newmonomtable] = setupQuadratics(model,keptvariablesIndex,newmonomtable);
 
 if nnz(model.Q) > 0
     if  model.solver.objective.quadratic.convex == 0 &  model.solver.objective.quadratic.nonconvex == 0
@@ -205,16 +247,62 @@ end
 
 % Remap indicies
 if ~isempty(model.integer_variables)
-    temp=ismember(keptvariables,model.integer_variables);
+    temp=ismember(keptvariablesIndex,model.integer_variables);
     model.integer_variables = find(temp);  
 end
 if ~isempty(model.binary_variables)
-    temp=ismember(keptvariables,model.binary_variables);
+    temp=ismember(keptvariablesIndex,model.binary_variables);
     model.binary_variables = find(temp);    
 end
 if ~isempty(model.semicont_variables)
-   temp=ismember(keptvariables,model.semicont_variables);
-    model.semicont_variables = find(temp);  
+   temp=ismember(keptvariablesIndex,model.semicont_variables);
+   model.semicont_variables = find(temp);  
+end
+if ~isempty(model.aux_variables)
+   temp=ismember(keptvariablesIndex,model.aux_variables);
+   model.aux_variables = find(temp);  
+end
+if ~isempty(model.K.sos)
+    if ~isempty(model.K.sos.variables)
+        for i = 1:length(model.K.sos.variables)
+            temp=ismember(keptvariablesIndex,model.K.sos.variables{i});
+            model.K.sos.variables{i} = find(temp);            
+        end
+    end
+end
+
+model.used_variables = model.used_variables(keptvariablesIndex);
+
+% Check if there are remaining strange terms. This occurs in #152
+% FIXME: Use code above recursively instead...
+if ~model.solver.objective.sigmonial & any(model.variabletype == 4)
+    % Bugger. There are signomial terms left, despite elimination, and the
+    % solver does not handle this. YALMIP has introduced an intermediate
+    % variable which is a nasty function of the parameter.      
+    signomials = find(model.variabletype == 4);
+    involved = [];
+    for i = 1:length(signomials)
+        m = model.monomtable(signomials(i),:);
+        involved = [involved;find(m ~= fix(m) | m < 0)];
+    end
+    involved = unique(involved);
+    [lb,ub] = findulb(model.F_struc,model.K,model.lb,model.ub);
+    if all(lb(involved) == ub(involved))
+        % Now add equality constraints to enforce       
+        for i = signomials
+            m = model.monomtable(i,:);
+            involved = find(m ~= fix(m) | m < 0);
+            gain = lb(involved).^m(involved);
+            s = zeros(1,size(model.F_struc,2));
+            multiplies = setdiff(find(m),involved);
+            s(i+1) = 1;
+            s(multiplies+1) = -gain;
+            model.F_struc = [s;model.F_struc];
+            model.K.f = model.K.f + 1;
+        end
+    else
+        error('Did not manage to instatiate model. Complicating terms remaining');
+    end
 end
 
 function model = compressModel(model)

@@ -1,10 +1,6 @@
 function [c,Q,f,onlyfeasible] = createobjective(h,G,options,quad_info)
 %CREATEOBJECTIVE Internal function to extract data related to objective function
 
-% Author Johan Löfberg
-% $Id: createobjective.m,v 1.8 2008-01-22 13:36:20 joloef Exp $
-
-
 onlyfeasible = 0;
 nvars = yalmip('nvars'); 
 if isempty(h)
@@ -41,9 +37,10 @@ else
         else
             % A relaxed problem should not calculate quadratic
             % decomposistion, fix!
-            c=zeros(nvars,1);
             lmi_variables = getvariables(h);
-            base = getbase(h);base= base(2:end);
+            base = getbase(h);base = base(2:end);
+            OKindex = find(~isinf(base));
+            c=full(base(OKindex(1))*zeros(nvars,1));
             c(lmi_variables) = base;
             Q = spalloc(nvars,nvars,0); 
             f = full(getbasematrix(h,0));

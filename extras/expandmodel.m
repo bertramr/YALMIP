@@ -1,6 +1,4 @@
 function [F,failure,cause,ALREADY_MODELLED] = expandmodel(F,h,options,w)
-% Author Johan Löfberg
-% $Id: expandmodel.m,v 1.93 2008-05-06 18:08:16 joloef Exp $
 
 % FIX : Current code experimental, complex, conservative, has issues with
 % nonlinearities and is slow...
@@ -12,7 +10,6 @@ global LUbounds
 global ALREADY_MODELLED
 global MARKER_VARIABLES
 global DUDE_ITS_A_GP
-global ALREADY_MODELLED
 global ALREADY_MODELLED_INDEX
 global REMOVE_THESE_IN_THE_END
 global OPERATOR_IN_POLYNOM
@@ -22,6 +19,21 @@ global CONSTRAINTCUTSTATE
 % one so we will keep it and pass it along in the recursion
 extendedvariables = yalmip('extvariables');
 
+integers = yalmip('intvariables');
+binaries = yalmip('binvariables');
+if ~isempty(F)
+    declareI = find(is(F,'integer'));
+    declareB = find(is(F,'binary'));
+    if ~isempty(declareI)
+        integers = [integers depends(F(declareI))];
+    end
+    if ~isempty(declareB)
+        binaries = [binaries depends(F(declareB))];
+    end
+end
+yalmip('settempintvariables',integers);
+yalmip('settempbinvariables',binaries);
+
 % We keep track of all auxilliary variables introduced by YALMIP
 nInitial = yalmip('nvars');
 
@@ -30,10 +42,14 @@ boundsAlreadySet = 0;
 if ~isempty(F)
     meta = find(is(F,'meta'));
     if ~isempty(meta)
-        LUbounds=setupBounds(F,options,extendedvariables);
+        LUbounds=setupBounds(F,options,extendedvariables);        
         boundsAlreadySet = 1;
         F = expandmeta(F);
     end
+end
+
+if isa(F,'constraint')
+    F = lmi(F);
 end
 
 if nargin < 3
@@ -51,7 +67,7 @@ else
     ALREADY_MODELLED = [];
     
     % Temporary hack to deal with a bug in CPLEX. For the implies operator (and
-    % some more) YALMIP creates a dummy variable x with set(x==1). Cplex fails
+    % some more) YALMIP creates a dummy variable x with (x==1). Cplex fails
     % to solve problem with these stupid variables kept, hence we need to
     % remove these variables and constraints...
     MARKER_VARIABLES = [];
@@ -140,7 +156,7 @@ else
 end
 
 % Index to variables modeling operators
-extended = find(ismembc(variables,extendedvariables));
+extended = find(ismembcYALMIP(variables,extendedvariables));
 
 if nargin < 3
     options = sdpsettings;
@@ -172,10 +188,10 @@ else
 end
 
 % Constraints generated during recursive process to model operators
-F_expand = set([]);
+F_expand = ([]);
 
 if isempty(F)
-    F = set([]);
+    F = ([]);
 end
 
 % First, check the objective
@@ -198,10 +214,34 @@ if DUDE_ITS_A_GP == 1
     method = 'graph';
 end
 
+% Test for very common special case with only norm expression
+ExtendedMap = yalmip('extendedmap');
+fail = 0;
+if  0%length(ExtendedMap) > 0 &&  all(strcmp('norm',{ExtendedMap.fcn}))
+    for i = 1:length(ExtendedMap)
+        if ~isequal(ExtendedMap(i).arg{2},2)
+            fail = 1;
+            break;
+        end
+        if ~isreal(ExtendedMap(i).arg{1})
+            fail = 1;
+            break;
+        end
+        if any(ismembcYALMIP(getvariables(ExtendedMap(i).arg{1}),extendedvariables))
+             fail = 1;
+            break;
+        end
+    end
+    for i = 1:length(ExtendedMap)
+        F_expand = [F_expand, cone(ExtendedMap(i).arg{1},ExtendedMap(i).var)];
+    end
+    F = F + lifted(F_expand,1);
+    return
+end
 % *************************************************************************
 % OK, looks good. Apply recursive expansion on the objective
 % *************************************************************************
-index_in_extended = find(ismembc(variables,extendedvariables));
+index_in_extended = find(ismembcYALMIP(variables,extendedvariables));
 allExtStructs = yalmip('extstruct');
 if ~isempty(index_in_extended)
     [F_expand,failure,cause] = expand(index_in_extended,variables,h,F_expand,extendedvariables,monomtable,variabletype,'objective',0,options,method,[],allExtStructs,w);
@@ -214,12 +254,13 @@ constraint = 1;
 all_extstruct = yalmip('extstruct');
 while constraint <=length(F) & ~failure
     
-    if ~already_expanded(constraint)
-        variables = uniquestripped([depends(F(constraint)) getvariables(F(constraint))]);
+    if ~already_expanded(constraint)       
+        Fconstraint = F(constraint);
+        variables = uniquestripped([depends(Fconstraint) getvariables(Fconstraint)]);
         
         % If constraint is a cut, all generated constraints must be marked
         % as cuts too
-        CONSTRAINTCUTSTATE =  getcutflag(F(constraint));
+        CONSTRAINTCUTSTATE =  getcutflag(Fconstraint);
         [ix,jx,kx] = find(monomtable(variables,:));
         if ~isempty(jx) % Bug in 6.1
             if any(kx>1)
@@ -227,17 +268,17 @@ while constraint <=length(F) & ~failure
             end
         end
         
-        index_in_extended = find(ismembc(variables,extendedvariables));
+        index_in_extended = find(ismembcYALMIP(variables,extendedvariables));
         if ~isempty(index_in_extended)
-            if is(F(constraint),'equality')
+            if is(Fconstraint,'equality')
                 if options.allowmilp | options.allownonconvex
-                    [F_expand,failure,cause] = expand(index_in_extended,variables,-sdpvar(F(constraint)),F_expand,extendedvariables,monomtable,variabletype,['constraint #' num2str(constraint)],0,options,'exact',[],allExtStructs,w);
+                    [F_expand,failure,cause] = expand(index_in_extended,variables,-sdpvar(Fconstraint),F_expand,extendedvariables,monomtable,variabletype,['constraint #' num2str(constraint)],0,options,'exact',[],allExtStructs,w);
                 else
                     failure = 1;
                     cause = ['integer model required for equality in constraint #' num2str(constraint)];
                 end
             else
-                [F_expand,failure,cause] = expand(index_in_extended,variables,-sdpvar(F(constraint)),F_expand,extendedvariables,monomtable,variabletype,['constraint #' num2str(constraint)],0,options,method,[],allExtStructs,w);
+                [F_expand,failure,cause] = expand(index_in_extended,variables,-sdpvar(Fconstraint),F_expand,extendedvariables,monomtable,variabletype,['constraint #' num2str(constraint)],0,options,method,[],allExtStructs,w);
             end
         end
     end
@@ -259,7 +300,7 @@ if ~isempty(MARKER_VARIABLES)
     for j = equalities
         v = getvariables(F(j));
         if length(v)==1
-            if ismembc(v,MARKER_VARIABLES)
+            if ismembcYALMIP(v,MARKER_VARIABLES)
                 remove = [remove j];
             end
         end
@@ -281,7 +322,7 @@ F_expand = lifted(F_expand,1);
 % *************************************************************************
 % We are done. We might have generated some stuff more than once, but
 % luckily we keep track of these mistakes and remove them in the end (this
-% happens if we have constraints like set(max(x)<1) + set(max(x)>0) where
+% happens if we have constraints like (max(x)<1) + (max(x)>0) where
 % the first constraint would genrate a graph-model but the second set
 % creates a integer model.
 % *************************************************************************

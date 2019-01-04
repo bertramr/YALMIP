@@ -3,9 +3,16 @@ if ~isinf(upper)
     LU = [p.lb p.ub];
     if nnz(p.c.*(p.ub-p.lb)) == 1 & nnz(p.Q)==0
         i = find(p.c.*(p.ub-p.lb));
-        if p.c(i)>0
-            p.ub(i) = min([p.ub(i) upper]);
+        if p.c(i) > 0
+            % We are minimizing x(i), since an upper bound is UPPER
+            % this means c(i)*x(i) has to be < UPPER in optimal solution
+            p.ub(i) = min([p.ub(i) upper/p.c(i)]);
+        elseif p.c(i) < 0
+            % We are maximizing x(i), since an lower bound is -UPPER
+            % this means x(i) has to be > -UPPER in optimal solution
+            p.lb(i) = max([p.lb(i) -upper/abs(p.c(i))]);
         end
+            
     end
     if ~isempty(p.bilinears) & nnz(p.Q)==0
         quad_v = find(p.bilinears(:,2) == p.bilinears(:,3));
@@ -40,4 +47,41 @@ if ~isinf(upper)
     if ~isequal(LU,[p.lb p.ub])
         p.changedbounds = 1;
     end
+    
+    % Some initial code for using inverse objective to derive bounds.
+    if nnz(p.Q)==0 && nnz(p.c)==1
+        [pos,~,val] = find(p.c);
+        if val == -1            
+            fi = find(p.evalVariables == pos);
+            if ~isempty(fi)
+                % We're maximizing f(x)
+                if ~isempty(p.evalMap{fi}.properties.inverse)
+                    if strcmp(p.evalMap{fi}.properties.definiteness,'positive')
+                        if strcmp(p.evalMap{fi}.properties.monotonicity,'increasing')
+                            if length(p.evalMap{fi}.arg)==2                               
+                                lower = -upper;
+                                p.lb(p.evalMap{fi}.variableIndex) = max([p.lb(p.evalMap{fi}.variableIndex) p.evalMap{fi}.properties.inverse(lower)]);
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if val == 1
+            fi = find(p.evalVariables == pos);
+            if ~isempty(fi)
+                % We're minimizing f(x)
+                if ~isempty(p.evalMap{fi}.properties.inverse)
+                    if strcmp(p.evalMap{fi}.properties.definiteness,'positive')
+                        if strcmp(p.evalMap{fi}.properties.monotonicity,'increasing')
+                            if length(p.evalMap{fi}.arg)==2                                                              
+                                p.ub(p.evalMap{fi}.variableIndex) = min([p.ub(p.evalMap{fi}.variableIndex) p.evalMap{fi}.properties.inverse(upper)]);
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
 end

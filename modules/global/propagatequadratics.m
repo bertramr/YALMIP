@@ -16,8 +16,7 @@ if p.bilinears~=0
             for i = 1:length(quadratic_variables)
                 k = quadratic_variables(i);
                 
-                if (p.lb(k) < p.ub(k)-1e-4)
-                    %if p.lb(k) >= 0 & (p.lb(k) < p.ub(k)-1e-4)
+                if (p.lb(k) < p.ub(k)-1e-4)                   
                     x = p.bilinears(p.bilinears(:,1)==k,2);% x^2
                     candidates = find((InequalityConstraintState==1) & p.F_struc(1:p.K.f+p.K.l,1+k))';
                     for j = candidates
@@ -66,47 +65,17 @@ if p.bilinears~=0
                             rest = (b+a([indPOS(:);indNEG(:)])*[UB(indPOS);LB(indNEG)]);
                             center = -cij/2;
                             radii2 = -rest + (cij/2)^2;
-                            left  = center-sqrt(radii2);
-                            right = center+sqrt(radii2);
-                            if p.ub(x) <= left
-                                % OK
-                            elseif p.lb(x)>= right
-                                % OK
-                            elseif p.lb(x) <= left & p.ub(x) < right
-                                p.ub(x) = right;
-                            elseif p.lb(x) <= right & p.lb(x) >= left
-                                p.lb(x) = right;
+                            if radii2 > 0
+                                left  = center-sqrt(radii2);
+                                right = center+sqrt(radii2);
+                                if p.ub(x) < right
+                                    p.ub(x) = min(p.ub(x),left);
+                                end
+                                if p.lb(x) > left
+                                    p.lb(x) = max(p.lb(x),right);
+                                end
                             end
-                        end
-                        %
-                        %                         if aij > 0
-                        %                             indNEG = find(a < 0);
-                        %                             indPOS = find(a > 0);
-                        %                             LB = p.lb;
-                        %                             UB = p.ub;
-                        %                             LB(k) = 0;
-                        %                             UB(k) = 0;
-                        %                             a(k) = 0;
-                        %                             newLB = (-p.F_struc(j,1)-a([indPOS(:);indNEG(:)])*[UB(indPOS);LB(indNEG)])/aij;
-                        %                             p.lb(k) = max(p.lb(k),newLB);
-                        %                             if p.lb(x)>0
-                        %                                 p.lb(x) = max(p.lb(x),sqrt(max(0,newLB)));
-                        %                             elseif p.ub(x)<0
-                        %                                 p.ub(x) = min(p.ub(x),-sqrt(max(0,newLB)));
-                        %                             end
-                        %                         elseif aij < 0
-                        %                             indNEG = find(a < 0);
-                        %                             indPOS = find(a > 0);
-                        %                             LB = p.lb;
-                        %                             UB = p.ub;
-                        %                             LB(k) = 0;
-                        %                             UB(k) = 0;
-                        %                             a(k) = 0;
-                        %                             newUB = (p.F_struc(j,1)+a([indPOS(:);indNEG(:)])*[UB(indPOS);LB(indNEG)])/(-aij);
-                        %                             p.ub(k) = min(p.ub(k),newUB);
-                        %                             p.ub(x) = min(p.ub(x),sqrt(max(0,newUB)));
-                        %                         end
-                        
+                        end                                
                     end
                     
                 elseif p.lb(k)<0

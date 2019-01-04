@@ -58,8 +58,8 @@ end
 
 if K.q(1)>0
     nof_new = sum(K.q);
-    prob.a = [prob.a [zeros(K.f,nof_new);zeros(K.l,nof_new);eye(nof_new)]];
-    prob.a(1+K.f+K.l:end,1:length(c)) = prob.a(1+K.f+K.l:end,1:length(c));
+    prob.a = [prob.a [spalloc(K.f,nof_new,0);spalloc(K.l,nof_new,0);speye(nof_new)]];
+    %prob.a(1+K.f+K.l:end,1:length(c)) = prob.a(1+K.f+K.l:end,1:length(c));
     prob.blc(1+K.f+K.l:end) = prob.buc(1+K.f+K.l:end);
     prob.buc(1+K.f+K.l:end) = prob.buc(1+K.f+K.l:end);
     prob.c = [prob.c;zeros(nof_new,1)];
@@ -94,8 +94,7 @@ if problem == 0
         prob.b = [prob.b;prob.h;1./prob.h];
         prob.map = [prob.map;max(prob.map) + (1:2*length(prob.h))'];
     end
-
-    prob.param = options.mosek.param;
+    
 else
     prob = [];
 end

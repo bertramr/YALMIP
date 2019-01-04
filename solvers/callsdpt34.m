@@ -11,7 +11,7 @@ lb      = interfacedata.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 if any(K.m > 0)
@@ -43,6 +43,7 @@ else
      end
 end
 options.sdpt3.printyes=double(options.verbose);
+options.sdpt3.printlevel=double(options.verbose)*3;
 options.sdpt3.expon=options.sdpt3.expon(1);
 
 % Setup the logarithmic barrier cost. We exploit the fact that we know that
@@ -147,12 +148,9 @@ if options.savedebug
 end
 
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-solvertime = clock;
-if options.verbose==0 % SDPT3 does not run silent despite printyes=0!
-   evalc('[obj,X,y,Z,info,runhist] =  sdpt3(blk,A,C,b,options.sdpt3,[],x0,[]);');
-else
-    [obj,X,y,Z,info,runhist] =  sdpt3(blk,A,C,b,options.sdpt3,[],x0,[]);            
-end
+solvertime = tic;
+[obj,X,y,Z,info,runhist] =  sdpt3(blk,A,C,b,options.sdpt3,[],x0,[]);            
+solvertime = toc(solvertime);
 
 % Create YALMIP dual variable and slack
 Dual = [];
@@ -198,7 +196,6 @@ if any(K.m > 0)
    % Dual = [];
 end
 
-solvertime = etime(clock,solvertime);
 Primal = -y;  % Primal variable in YALMIP
 
 % Convert error code
@@ -207,7 +204,7 @@ switch info.termcode
         problem = 0; % No problems detected
     case {-1,-5,-9} 
         problem = 5; % Lack of progress
-    case {-2,-3,-4,-7}
+    case {3,-2,-3,-4,-7}
         problem = 4; % Numerical problems
     case -6
         problem = 3; % Maximum iterations exceeded
@@ -247,14 +244,7 @@ else
 end
 
 % Standard interface 
-output.Primal      = Primal;
-output.Dual        = Dual;
-output.Slack       = Slack;
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(Primal,Dual,[],problem,infostr,solverinput,solveroutput,solvertime);
 
 function [F_struc,K] = deblock(F_struc,K);
 X = any(F_struc(end-K.s(end)^2+1:end,:),2);

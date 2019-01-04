@@ -31,7 +31,7 @@ if nargin == 3
    
 end
 
-if isa(p,'double')
+if isnumeric(p)
     if nargin==1
         deg = 0;
     else
@@ -40,7 +40,7 @@ if isa(p,'double')
     return
 end
 
-if nargin<2 | isempty(y)
+if nargin<2 || isempty(y)
     y = recover(depends(p));   
 end
 
@@ -82,7 +82,7 @@ else
         z.type = '()';
         z.subs{1} = i;
         pi = subsref(p,z);
-        if isa(pi,'double')
+        if isnumeric(pi)
             deg(i,:) = 0;
         else
             exponent_p = exponents(pi,yy);

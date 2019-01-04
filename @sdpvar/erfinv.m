@@ -1,8 +1,6 @@
 function varargout = erfinv(varargin)
 %ERFINV (overloaded)
 
-% Author Johan Löfberg
-% $Id: erfinv.m,v 1.5 2007-08-02 18:16:26 joloef Exp $
 switch class(varargin{1})
 
     case 'double'
@@ -14,13 +12,13 @@ switch class(varargin{1})
     case 'char'
        
         X = varargin{3};
-        F = set(-1+1e-9 <= X <= 1-1e-9);
+        F = (-1+1e-9 <= X <= 1-1e-9);
 
         operator = struct('convexity','none','monotonicity','increasing','definiteness','none','model','callback');
         operator.bounds = @bounds;
 
         varargout{1} = F;
-        varargout{2} = operator
+        varargout{2} = operator;
         varargout{3} = X;
 
     otherwise

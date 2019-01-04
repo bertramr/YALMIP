@@ -1,6 +1,12 @@
 function output = callscipmex(interfacedata)
 
-% Author Johan Löfberg 
+% Fix for the case when YALMIP selects scip as a solver for a nonlinearly
+% parameterized problem, and te final problem is actually still nonlonear.
+% If so, we should really have selected scipnl
+if any(interfacedata.variabletype) || ~isempty(interfacedata.evalMap)
+    output = callscipnl(interfacedata);
+    return
+end
 
 % Retrieve needed data
 options = interfacedata.options;
@@ -82,7 +88,7 @@ if options.savedebug
 end
 
 % Call mex-interface
-solvertime = clock;  
+solvertime = tic;
 try
     [x,FMIN,STATUS,INFO] = scip(H, f, A, rl, ru, lb, ub, VARTYPE, sos,qc,[],ops);
 catch
@@ -92,25 +98,29 @@ catch
     STATUS = -1;
     INFO = [];
 end
-if interfacedata.getsolvertime solvertime = etime(clock,solvertime);else solvertime = 0;end
+solvertime = toc(solvertime);
 
 D_struc = [];
 
 % Check, currently not exhaustive...
 problem = 0;
 switch STATUS
+    case 0
+        problem = 9;
+    case 1
+        problem = 16;
     case {2,3,4,5}
         problem = 3;
-    case {10}
-        problem = 0;   
+    case {7,8,9,10}
+        problem = 4;
     case 11
-        problem = 1;
+        problem = 0;
     case 12
-        problem = 2;
+        problem = 1;
     case 13
+        problem = 2;
+    case 14
         problem = 15;
-    case {1,6,7,8,9}
-        problem = 11;
     otherwise
         problem = -1;
 end
@@ -138,11 +148,7 @@ else
 	solveroutput = [];
 end
 
+infostr = yalmiperror(problem,interfacedata.solver.tag);
+
 % Standard interface 
-output.Primal      = x;
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(x,D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);

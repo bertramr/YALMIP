@@ -1,8 +1,5 @@
 function output = callfmincongp(interfacedata)
 
-% Author Johan Löfberg
-% $Id: callfmincongp.m,v 1.26 2008-05-09 13:51:41 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -73,9 +70,8 @@ if ~isempty(fixed)
     end
 end
 
-%something failed, perhaps a QP
-if problem & isempty(sigmonial_variables) 
-    % This is an LP or QP!
+%something failed
+if problem 
     % Go to standard fmincon
     if options.verbose
         disp('Conversion to geometric program failed. Trying general non-convex model in fmincon');
@@ -121,17 +117,17 @@ if problem == 0
     end
 
     prob = precalcgpstruct(prob);
-    
-    solvertime = clock;
+        
     options.fmincon.GradObj    = 'on';
     options.fmincon.GradConstr = 'on';
     warning('off','optim:fmincon:NLPAlgLargeScaleConflict')
+    solvertime = tic;
     if isfield(options.fmincon,'tlprob')
         [xout,fmin,flag,output,lambda] = fmincon('fmincon_fungp',x0,[],[],[],[],lb,ub,'fmincon_congp',options.fmincon,options.fmincon.tlprob,prob);
     else
         [xout,fmin,flag,output,lambda] = fmincon('fmincon_fungp',x0,[],[],[],[],lb,ub,'fmincon_congp',options.fmincon,prob);
     end
-    solvertime = etime(clock,solvertime);
+    solvertime = toc(solvertime);
     warning('on','optim:fmincon:NLPAlgLargeScaleConflict')
 
     
@@ -191,12 +187,5 @@ else
     solveroutput = [];
 end
 
-% Standard interface
-output.Primal      = x;
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+% Standard interface 
+output = createOutputStructure(x,D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);

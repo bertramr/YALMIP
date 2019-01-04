@@ -43,9 +43,6 @@ function sys = sdpvar(varargin)
 %
 %   See also @SDPVAR/SET, INTVAR, BINVAR, methods('sdpvar'), SEE
 
-% Author Johan Löfberg
-% $Id: ncvar.m,v 1.4 2006-08-28 13:48:38 joloef Exp $
-
 superiorto('sdpvar');
 if nargin==0   
     return
@@ -345,6 +342,7 @@ switch nargin
         sys.savedata = [];
         sys.extra = [];
         sys.extra.expanded = [];
+        sys.extra.createTime = definecreationtime;
         sys.originalbasis = [];
         sys.leftfactors{1} = [];
         sys.rightfactors{1} = [];
@@ -373,6 +371,7 @@ switch nargin
         sys.savedata = [];
         sys.extra = [];
         sys.extra.expanded = [];        
+        sys.extra.createTime = definecreationtime;
         sys.conicinfo = 0;
         sys.originalbasis = [];
         sys.leftfactors{1} = [];
@@ -399,7 +398,8 @@ switch nargin
         sys.typeflag = varargin{6};
         sys.savedata = [];
         sys.extra = varargin{7};
-        sys.extra.expanded = [];        
+        sys.extra.expanded = [];     
+        sys.extra.createTime = definecreationtime;
         sys.conicinfo = varargin{7};
         % Find zero-variables
         constants = find(sys.lmi_variables==0);
@@ -677,6 +677,7 @@ if isa(basis,'cell')
         sys{blk}.savedata = [];
         sys{blk}.extra = [];
         sys{blk}.extra.expanded = [];
+        sys{blk}.extra.createTime = definecreationtime;
         sys{blk}.conicinfo = conicinfo;
         sys{blk}.originalbasis = [];
         sys{blk}.leftfactors{1} = [];
@@ -696,6 +697,7 @@ else
     sys.savedata = [];
     sys.extra = [];
     sys.extra.expanded = [];    
+    sys.extra.createTime = definecreationtime;
     sys.conicinfo = conicinfo;
     sys.originalbasis = [];
     sys.leftfactors{1} = [];

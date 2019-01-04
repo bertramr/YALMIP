@@ -47,6 +47,10 @@ end
 % order to use them if possible in 2-norm explicit maximization
 F_w = convertquadratics(F_w);
 
+% Convert quadratic constraints in uncertain model to SOCPs. This will
+% enable us to use conic/conic robustification
+F_xw = convertquadratics(F_xw);
+
 % Export uncertainty model to numerical format
 ops.solver = '';
 ops.removeequalities = 0;
@@ -140,6 +144,23 @@ separatedZmodel = separateUncertainty(Zmodel,uncertaintyGroups);
 % 'Bounds', 'Simplex', 'Conic', 'Polytopic', '2-norm', '1-norm', 'inf-norm'
 [uncertaintyTypes,separatedZmodel,uncertaintyGroups] = classifyUncertainty(separatedZmodel,uncertaintyGroups,w);
 
+% Misplaced constraints. Really isn't uncertain, but when we expanded an
+% uncertain operator, a new auxilliary variable was introduced, but has not
+% made dependent on w. Hewnce, it should really be moved. Taken care
+% outside now though
+% if length(F_xw)>0
+%     move = zeros(length(F_xw),1);
+%     for i = 1:length(F_xw)
+%         if all(ismember(getvariables(F_xw(i)),VariableType.x_variables))
+%             move(i) = 1;
+%         end
+%     end
+%     if any(move)
+%         F_x = [F_x, F_xw(find(move))];
+%         F_xw(find(move))=[];
+%     end
+% end
+            
 UncertainModel.F_x = F_x;
 UncertainModel.F_xw = F_xw;
 UncertainModel.h = h;
@@ -256,14 +277,14 @@ for i = 1:length(uncertaintyGroups)
                 newModels{i}.K.s(end+1) = Zmodel.K.s(j);
                 newModels{i}.F_struc = [newModels{i}.F_struc;data_s];
             end
-            top = top + Zmodel.K.q(j);
+            top = top + Zmodel.K.s(j)^2;
         end
     end
     if isempty(newModels{i}.K.s)
         newModels{i}.K.s = 0;
     end
     
-    newModels{i}.K.s = 0;
+   % newModels{i}.K.s = 0;
     newModels{i}.variabletype = Zmodel.variabletype(uncertaintyGroups{i});
 end
 

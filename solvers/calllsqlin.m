@@ -1,8 +1,5 @@
 function output = calllsqlin(interfacedata)
 
-% Author Johan Löfberg
-% $Id: calllsqlin.m,v 1.17 2007-08-02 11:39:36 joloef Exp $
-
 K = interfacedata.K;
 c = interfacedata.c;
 CA = interfacedata.F_struc;
@@ -65,12 +62,10 @@ end
 
 model.d = -Cones(2:end,1);
 model.C = Cones(2:end,2:end-1);
-model.A = A;
+model.Aineq = A;
 model.Aeq = Aeq;
-model.b = b;
+model.bineq = b;
 model.beq = beq;
-model.lb = [];
-model.ub = [];
 model.x0 = [];
 model.options = interfacedata.options.lsqlin;
 model.solver = 'lsqlin';
@@ -80,15 +75,16 @@ if options.savedebug
 end
 
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-solvertime = clock;
+solvertime = tic;
 [X,RESNORM,RESIDUAL,EXITFLAG,OUTPUT,LAMBDA] = lsqlin(model);
+solvertime = toc(solvertime);
+
 solveroutput.X = X;
 solveroutput.RESNORM = RESNORM;
 solveroutput.RESIDUAL = RESIDUAL;
 solveroutput.EXITFLAG = EXITFLAG;
 solveroutput.OUTPUT = OUTPUT;
 solveroutput.LAMBDA = LAMBDA;
-if interfacedata.getsolvertime solvertime = etime(clock,solvertime);else solvertime = 0;end
 
 solution.x = [X;RESNORM];
 solution.D_struc = [];
@@ -116,23 +112,20 @@ if ~options.savesolveroutput
     solveroutput = [];
 end
 
-% Standard interface
-output.Primal      = solution.x(:);
-output.Dual        = solution.D_struc;
-output.Slack       = [];
-output.problem     = solution.problem;
-output.infostr     = yalmiperror(solution.problem,interfacedata.solver.tag);
-output.solvertime  = solvertime;
 if ~options.savesolverinput
-    output.solverinput = [];
+    solverinput = [];
 else
-    output.solverinput = model;
+    solverinput = model;
 end
 if ~options.savesolveroutput
-    output.solveroutput = [];
+    solveroutput = [];
 else
-    output.solveroutput = solveroutput;
+    solveroutput = solveroutput;
 end
+
+% Standard interface 
+output = createOutputStructure(solution.x(:),solution.D_struc,[],solution.problem,yalmiperror(solution.problem,interfacedata.solver.tag),solverinput,solveroutput,solvertime);
+
 
 
 function output = error_output

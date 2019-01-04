@@ -1,14 +1,12 @@
 function varargout = eig_yalmip_internal(varargin)
 
-% Author Johan Löfberg
-% $Id: eig_yalmip_internal.m,v 1.6 2007-08-03 11:41:16 joloef Exp $
 switch class(varargin{1})
 
     case 'double'
         X = varargin{1}(:);
         n = sqrt(length(X));
         X = reshape(X,n,n);
-        varargout{1} = eig(X);
+        varargout{1} = eig((X+X')/2);
 
     case 'sdpvar' % Overloaded operator for SDPVAR objects. Pass on args and save them.
 

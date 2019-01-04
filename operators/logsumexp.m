@@ -9,8 +9,6 @@ function varargout = logsumexp(varargin)
 % of this function is exploited to perform convexity analysis and rigorous
 % modelling.
 
-% Author Johan Löfberg
-% $Id: logsumexp.m,v 1.3 2009-02-12 10:31:47 joloef Exp $
 switch class(varargin{1})
 
     case 'double'
@@ -20,7 +18,14 @@ switch class(varargin{1})
     case 'sdpvar'
 
         if min(size(varargin{1}))>1
-            error('LOGSUMEXP only defined for vector arguments');
+            x = varargin{1};
+            y = [];
+            for i = 1:size(x,2)
+                y = [y yalmip('define',mfilename,x(:,i))];
+            end
+            varargout{1} = y;   
+        elseif max(size(varargin{1}))==1
+            varargout{1} = varargin{1};
         else
             varargout{1} = yalmip('define',mfilename,varargin{1});
         end

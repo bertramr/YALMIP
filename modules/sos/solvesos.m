@@ -34,8 +34,8 @@ function [sol,m,Q,residuals,everything] = solvesos(F,obj,options,params,candidat
 %                Warning, these residuals are not computed on matrix sos-of-squares
 %
 %   EXAMPLE
-%    x = sdpvar(1);solvesos(set(sos(x^4+x^3+1)));                    % Simple decompositions
-%    x = sdpvar(1);t = sdpvar(1);solvesos(set(sos(x^4+x^3+1-t)),-t); % Lower bound by maximizing t
+%    x = sdpvar(1);solvesos((sos(x^4+x^3+1)));                    % Simple decompositions
+%    x = sdpvar(1);t = sdpvar(1);solvesos((sos(x^4+x^3+1-t)),-t); % Lower bound by maximizing t
 %
 %   NOTES
 %
@@ -86,16 +86,20 @@ if nargin<5
 end
 
 if isa(F,'constraint')
-    F = set(F);
+    F = lmi(F);
 end
 
 if isempty(options)
     options = sdpsettings;
+else
+    if ~isa(options,'struct')
+        error('The third argument should be an options structure');
+    end
 end
 
 % Lazy syntax (not official...)
 if nargin==1 & isa(F,'sdpvar')
-    F = set(sos(F));
+    F = (sos(F));
 end
 
 if ~isempty(options)
@@ -263,7 +267,7 @@ switch sol.problem
         % *********************************************
         for constraint = 1:length(p)
 
-            if constraint > 1 & isequal(BlockedN{constraint},BlockedN{constraint-1}) & isequal(Blockedx{constraint},Blockedx{constraint-1}) & isequal(Blockedvarchange{constraint},Blockedvarchange{constraint-1}) & isequal(sizep(constraint),sizep(constraint-1))
+            if constraint > 1 && isequal(BlockedN{constraint},BlockedN{constraint-1}) && isequal(Blockedx{constraint},Blockedx{constraint-1}) && isequal(Blockedvarchange{constraint},Blockedvarchange{constraint-1}) && isequal(sizep(constraint),sizep(constraint-1))
                 monoms{constraint} = monoms{constraint-1};
             else
                 monoms{constraint} = [];
@@ -303,7 +307,7 @@ switch sol.problem
                         h0 = R*monoms{constraint}(usedVariables);
                         if isa(h0,'sdpvar')
                             h{constraint} = clean(R*monoms{constraint}(usedVariables),options.sos.clean);
-                            h{constraint} = h{constraint}(find(h{constraint}));
+                            h{constraint} = h{constraint}(findelements(h{constraint}));
                         else
                             h{constraint} = h0;
                         end
@@ -314,7 +318,7 @@ switch sol.problem
 
                         if isa(h0,'sdpvar')
                             h{constraint} = clean(R*monoms{constraint},options.sos.clean);
-                            h{constraint} = h{constraint}(find(sum(h{constraint},2)),:);
+                            h{constraint} = h{constraint}(findelements(sum(h{constraint},2)),:);
                         else
                             h{constraint} = h0;
                         end

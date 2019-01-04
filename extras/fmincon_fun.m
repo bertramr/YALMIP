@@ -1,4 +1,4 @@
-function [f,df,xevaledout] = fmincon_fun(x,model)
+function [f,df,xevaledout,dx] = fmincon_fun(x,model)
 
 global latest_xevaled
 global latest_x_xevaled
@@ -28,12 +28,13 @@ else
 end
 f=full(f);
 df = [];
+dx = [];
 if nargout==1 || ~model.derivative_available
     return
 elseif model.SimpleLinearObjective
-    df = model.c(model.linearindicies);
+    df = full(model.c(model.linearindicies));
 elseif model.SimpleQuadraticObjective
-    df = model.c(model.linearindicies) + 2*model.Q(model.linearindicies,model.linearindicies)*x;
+    df = full(model.c(model.linearindicies) + 2*model.Q(model.linearindicies,model.linearindicies)*x);
 elseif model.SimpleNonlinearObjective
     requested = model.c | any(model.Q,2);
     [i,j,k] = find((model.deppattern(find(requested),:)));
@@ -45,17 +46,20 @@ elseif model.SimpleNonlinearObjective
     xevaled = zeros(1,n);
     xevaled(linearindicies) = x;
     X = repmat(xevaled,size(mtNonlinear,1),1);
-    r = find(mtNonlinear );
+    r = find(mtNonlinear);
+    used = find(any(mtNonlinear,1));
+    mtCompressed = mtNonlinear(:,used);
+    rCompressed = find(mtCompressed);
     X = X(r);
-    Xones = ones(size(mtNonlinear,1),size(mtNonlinear,2));
+    Xones = ones(size(mtNonlinear,1),size(mtCompressed,2));
     for i = 1:length(linearindicies)
         if requested(i)
             mt = mtNonlinear;
             oldpower = mtNonlinear(:,linearindicies(i));
             mt(:,linearindicies(i)) = mt(:,linearindicies(i))-1;
             Z = X.^mt(r);
-            XX = Xones;
-            XX(r) = Z;
+            XX = Xones;          
+            XX(rCompressed) = Z;
             xevaledNonLinear = prod(XX,2);
             xevaledNonLinear = xevaledNonLinear(:)'.*oldpower';xevaledNonLinear(isnan(xevaledNonLinear))=0;
             dx = zeros(1,n);

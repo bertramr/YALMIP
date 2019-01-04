@@ -1,8 +1,5 @@
 function output = calldsdp(interfacedata)
 
-% Author Johan Löfberg
-% $Id: calldsdp5.m,v 1.11 2008-04-24 20:19:57 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -14,7 +11,7 @@ lb      = interfacedata.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 % Convert from SeDuMi format
@@ -23,7 +20,6 @@ end
 options.dsdp.printyes = (options.verbose>0);
 options.dsdp.print = (options.verbose>0);
 
-solvertime = clock; 
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
 
 if options.savedebug
@@ -31,6 +27,7 @@ if options.savedebug
     save dsdpdebug AC b pars
 end
 
+solvertime = tic;
 if isempty(x0)
     if options.saveduals | options.dimacs | options.savesolveroutput
         if options.verbose==0 % to fix display bug reported from user
@@ -60,8 +57,7 @@ else
         end
     end
 end
-
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
 
 % Create dual variable in internal format
 if options.saveduals | options.dimacs
@@ -125,10 +121,4 @@ else
 end
 
 % Standard interface 
-output.Primal      = Primal;
-output.Dual        = Dual;
-output.Slack       = [];
-output.problem     = problem;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(Primal,Dual,[],problem,infostr,solverinput,solveroutput,solvertime);

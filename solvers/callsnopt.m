@@ -1,8 +1,5 @@
 function output = callsnopt(model)
 
-% Author Johan Löfberg
-% $Id: callsnopt.m,v 1.17 2010-01-20 09:13:15 joloef Exp $
-
 % Build trees etc. This common format is used for fmincon, snopt and ipopt
 % interfaces
 model = yalmip2nonlinearsolver(model);
@@ -11,9 +8,18 @@ if ~model.derivative_available
     disp('Derivate-free call to snopt not yet implemented')
     error('Derivate-free call to snopt not yet implemented')
 end
+
+% Figure out which variables are artificially introduced to normalize
+% arguments in callback operators to simplify chain rules etc. We can do
+% our function evaluations and gradient computations in our lifted world,
+% but only expose the model in the original variables to the nonlinear
+% solver. 
+% model = compressLifted(model);
+
 if model.options.savedebug
     save snoptdebug model
 end
+
 showprogress('Calling SNOPT',model.options.showprogress);
 
 x0 = model.x0;
@@ -25,12 +31,14 @@ xstate = zeros(length(xupp),1);
 
 Fupp = [ inf;
          repmat(0,length(model.bnonlinineq),1);
+         repmat(0,nnz(model.K.q),1);
          repmat(0,length(model.bnonlineq),1);
          repmat(0,length(model.b),1);
          repmat(0,length(model.beq),1)];
      
 Flow = [ -inf;
          repmat(-inf,length(model.bnonlinineq),1);
+         repmat(-inf,nnz(model.K.q),1);
          repmat(0,length(model.bnonlineq),1);
          repmat(-inf,length(model.b),1);
          repmat(0,length(model.beq),1)];
@@ -55,7 +63,6 @@ model.sparsityElements = find(G);
 
 usrf = 'snopt_callback';
 snopt_callback([],model);
-solvertime = clock;
 if model.options.verbose == 0
     snscreen('off')
 else
@@ -63,12 +70,31 @@ else
 end
 snseti('Minimize',1)  
 
-[xout,F,xmul,Fmul,inform, xstate, Fstate, ns, ninf, sinf, mincw, miniw, minrw] = snoptcmex( solveopt, x0, xlow, xupp, xmul, xstate, Flow, Fupp, Fmul, Fstate,ObjAdd, ObjRow, A, iAfun(:), jAvar(:),iGfun(:), jGvar(:), usrf );
-   
-solvertime = etime(clock,solvertime);
+global latest_xevaled
+global latest_x_xevaled
+latest_xevaled = [];
+latest_x_xevaled = [];
+
+solvertime = tic;
+if strcmpi(model.solver.version,'cmex')
+    % Some old interface? Keep for safety
+    [xout,F,xmul,Fmul,inform, xstate, Fstate, ns, ninf, sinf, mincw, miniw, minrw] = snoptcmex( solveopt, x0, xlow, xupp, xmul, xstate, Flow, Fupp, Fmul, Fstate,ObjAdd, ObjRow, A, iAfun(:), jAvar(:),iGfun(:), jGvar(:), usrf );
+else
+    [xout,F,inform,xmul,Fmul] = snopt(x0, xlow, xupp, xmul, xstate,Flow, Fupp, Fmul, Fstate, usrf,ObjAdd, ObjRow,A, iAfun, jAvar, iGfun, jGvar);      
+end
+  
+solvertime = toc(solvertime);
+
 lambda = Fmul(2:end);   
 
-x = RecoverNonlinearSolverSolution(model,xout);
+if ~isempty(xout) && ~isempty(model.lift);
+    x = zeros(length(model.linearindicies),1);
+    x(model.lift.linearIndex) = xout;
+    x(model.lift.liftedIndex) = model.lift.T*xout + model.lift.d;
+    x = RecoverNonlinearSolverSolution(model,x);
+else
+    x = RecoverNonlinearSolverSolution(model,xout);
+end
 
 problem = 0;
 
@@ -79,11 +105,18 @@ D_struc = [];
 switch inform
     case {1}
         problem = 0;
-    case {1,11,12,13,14,40,43,91} % 1 is sent when I test
+    case {11,12,13,14,40,43,91} % 1 is sent when I test
         problem = 1;
-    case {2,33}
+    case 21
+        problem = 2;
+    case {31,32}
+        problem = 3;
+    case {2,3,33,41,42,43,44}
         problem = 4;
-    otherwise        
+    case {71,72,73,74}
+        problem = 16;
+    otherwise 
+        problem = 11;
 end
 
 % Save all data sent to solver?

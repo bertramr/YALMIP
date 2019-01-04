@@ -19,12 +19,19 @@ if model.options.savedebug
 end
 showprogress('Calling IPOPT',model.options.showprogress);
 
-Fupp = [ repmat(0,length(model.bnonlinineq),1);
+% Figure out which variables are artificially introduced to normalize
+% arguments in callback operators to simplify chain rules etc. We can do
+% our function evaluations and gradient computations in our lifted world,
+% but only expose the model in the original variables to the nonlinear
+% solver. 
+% model = compressLifted(model);
+
+Fupp = [ repmat(0,length(model.bnonlinineq)+length(model.K.q)*(model.K.q(1)>0),1);
     repmat(0,length(model.bnonlineq),1);
     repmat(0,length(model.b),1);
     repmat(0,length(model.beq),1)];
 
-Flow = [ repmat(-inf,length(model.bnonlinineq),1);
+Flow = [ repmat(-inf,length(model.bnonlinineq)+length(model.K.q)*(model.K.q(1)>0),1);
     repmat(0,length(model.bnonlineq),1);
     repmat(-inf,length(model.b),1);
     repmat(0,length(model.beq),1)];
@@ -41,7 +48,7 @@ if ~isempty(model.lb)
         problem = 1;   
         solverinput = [];
         solveroutput = [];  
-        output = createoutput(model.lb*0,[],[],problem,'IPOPT',solverinput,solveroutput,0);
+        output = createoutput(model.c*0,[],[],problem,'IPOPT',solverinput,solveroutput,0);
         return
     end
 end
@@ -56,7 +63,7 @@ global latest_G
 global latest_g
 global latest_xevaled
 global latest_x_xevaled
-latest_G= [];
+latest_G = [];
 latest_g = [];
 latest_x_f = [];
 latest_x_g = [];
@@ -87,6 +94,15 @@ if ~model.options.usex0
     model.x0(isinf(options.ub)) = options.lb(isinf(options.ub))+1;
     model.x0(isinf(options.lb)) = options.ub(isinf(options.lb))-1;
     model.x0(isinf(model.x0)) = 0;
+    if any(model.variabletype == 4)
+        problematic = find(any(model.monomtable(:,model.linearindicies) < 0 ,1));
+        if ~isempty(problematic)
+            problematic = problematic(find(model.x0(problematic)==0));
+            Oneisfeas = problematic(find(model.ub(problematic) > 1));
+            model.x0(Oneisfeas) = 1;
+        end
+    end
+    model.x0(find(model.lb==model.ub)) = model.lb(find(model.lb==model.ub));
 end
 
 % If quadratic objective and no nonlinear constraints, we can supply an
@@ -102,14 +118,21 @@ if ~any(model.variabletype(usedinObjective)) & any(model.Q)
     end
 end
 
-solvertime = clock;
+solvertime = tic;
 [xout,info] = ipopt(model.x0,funcs,options);
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
 
 % Duals currently not supported
 lambda = [];
 
-x = RecoverNonlinearSolverSolution(model,xout);
+if ~isempty(xout) && ~isempty(model.lift);
+    x = zeros(length(model.linearindicies),1);
+    x(model.lift.linearIndex) = xout(:);
+    x(model.lift.liftedIndex) = model.lift.T*xout(:) + model.lift.d;
+    x = RecoverNonlinearSolverSolution(model,x);
+else
+    x = RecoverNonlinearSolverSolution(model,xout);
+end
 
 switch info.status
     case {0,1}

@@ -1,8 +1,5 @@
 function output = calllpsolve(interfacedata)
 
-% Author Johan Löfberg 
-% $Id: calllpsolve.m,v 1.14 2010-04-27 14:25:05 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -83,38 +80,38 @@ if ~isempty(semicont_variables)
     end
 end
 if options.savedebug
-    save mxlpsolvedebug f A b e UB LB xint 
+    save lpsolvedebug f A b e UB LB xint 
 end
 
 lp = create_lp_solve_model(A,b,f,xint,LB,UB,e,options);
 if ~isempty(K.sos)
     for i = 1:length(K.sos.type)
-       mxlpsolve('add_SOS', lp, 'Dummy', str2num(K.sos.type(i)), 1, K.sos.variables{i}, K.sos.weight{i});
+       lp_solve('add_SOS', lp, 'Dummy', str2num(K.sos.type(i)), 1, K.sos.variables{i}, K.sos.weight{i});
     end
 end
 if ~isempty(semicont_variables)
-    mxlpsolve('set_semicont', lp, semicont_variables) 
+    lp_solve('set_semicont', lp, semicont_variables) 
 end
 
-try
-    solvertime = clock; 
+try    
     if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-    result=mxlpsolve('solve', lp);
-    solvertime = etime(clock,solvertime);
-    if result == 0 | result == 1 | result == 11 | result == 12
-        [obj, x, duals] = mxlpsolve('get_solution', lp);
+    solvertime = tic;
+    result=lp_solve('solve', lp);
+    solvertime = toc(solvertime);
+    if result == 0 | result == 1 | result == 11 | result == 12        
+        [obj, x, duals] = lp_solve('get_solution', lp);
     else
         obj = [];
         x = zeros(length(c),1);
         duals = [];
     end
-    mxlpsolve('delete_lp', lp);
+    lp_solve('delete_lp', lp);
 catch
     obj = [];
     x = zeros(length(c),1);
     duals = [];
     result = -1;
-    mxlpsolve('delete_lp', lp);
+    lp_solve('delete_lp', lp);
 end
 
 
@@ -173,13 +170,5 @@ else
 	solveroutput = [];
 end
 
-
 % Standard interface 
-output.Primal      = x;
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(x,D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);

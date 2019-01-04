@@ -1,24 +1,14 @@
-function [solvers,keep] = getavailablesolvers(findallsolvers,options);
+function [solvers,keep,allsolvers] = getavailablesolvers(findallsolvers,options);
     
-solvers = definesolvers;
+solvers = definesolvers;allsolvers = solvers;
 keep = ones(length(solvers),1);
-
-% solverstocheck = 1:length(solvers);
-% if length(options.solver)>0 & isempty(strfind(options.solver,'*')) & ~findallsolvers
-%     for i = 1:length(solvers)
-%         if strcmpi(options.solver,solvers(i).tag)
-%            if ~solvers(i).usesother                              
-%            end
-%         end
-%     end
-% end
 
 if ~findallsolvers
     for i = 1:length(solvers)
         isavailable = 1;
         j = 1;
         
-        while (j <= length(solvers(i).checkfor)) & isavailable
+        while (j <= length(solvers(i).checkfor)) && isavailable
             s = exist(solvers(i).checkfor{j},'file');
             s = (s~=0) & (s~=7);
             isavailable = isavailable & s;
@@ -30,6 +20,6 @@ if ~findallsolvers
     end
 end
 
-if nargout == 1
+if nargout == 1 || nargout==3
     solvers = solvers(find(keep));
 end

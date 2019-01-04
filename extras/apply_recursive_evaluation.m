@@ -13,40 +13,55 @@ for i = 1:length(p.evaluation_scheme)
 end
 xevaled = xevaled(:);
 
-function x = process_monomials(p,x,indicies);
+function x = process_monomials(p,x,indicies)
 indicies = p.monomials(indicies);
 try
     % Do bilinears and quadratics directly
     if max(p.variabletype(indicies))==2
-        Bilinears = p.variabletype(indicies)==1;
-        if any(Bilinears)
-            Bilinears = indicies(p.variabletype(indicies)==1);
+        BilinearIndex = p.variabletype(indicies)==1;
+        if any(BilinearIndex)
+            Bilinears = indicies(BilinearIndex);
             x(Bilinears) = x(p.BilinearsList(Bilinears,1)).*x(p.BilinearsList(Bilinears,2));
         end
-        Quadratics = p.variabletype(indicies)==2;
-        if any(Quadratics)
-            Quadratics = indicies(p.variabletype(indicies)==2);
+        QuadraticIndex = p.variabletype(indicies)==2;
+        if any(QuadraticIndex)
+            Quadratics = indicies(QuadraticIndex);
             x(Quadratics) = x(p.QuadraticsList(Quadratics,1)).^2;
         end
     else
-        % Mixed stuff. At least do bilinear and quadratics efficiently
-        Bilinears = p.variabletype(indicies)==1;
-        if any(Bilinears)
-            Bilinears = indicies(p.variabletype(indicies)==1);
-            x(Bilinears) = x(p.BilinearsList(Bilinears,1)).*x(p.BilinearsList(Bilinears,2));
-            indicies = setdiff1D(indicies,Bilinears);
+        % Mixed stuff. At least do bilinear and quadratics efficiently        
+        BilinearIndex = p.variabletype(indicies)==1;
+        if any(BilinearIndex)              
+            Bilinears = indicies(BilinearIndex);
+            x(Bilinears) = x(p.BilinearsList(Bilinears,1)).*x(p.BilinearsList(Bilinears,2));                
+            indicies(BilinearIndex) = [];            
         end
-        Quadratics = p.variabletype(indicies)==2;
-        if any(Quadratics)
-            Quadratics = indicies(p.variabletype(indicies)==2);
-            x(Quadratics) = x(p.QuadraticsList(Quadratics,1)).*x(p.QuadraticsList(Quadratics,2));
-            indicies = setdiff1D(indicies,Bilinears);
+        QuadraticIndex = p.variabletype(indicies)==2;
+        if any(QuadraticIndex)
+            Quadratics = indicies(QuadraticIndex);
+            x(Quadratics) = x(p.QuadraticsList(Quadratics,1)).^2;
+            indicies(QuadraticIndex)=[];
         end
         
         V = p.monomtable(indicies,:);
-        r = find(any(V,1));
-        V = V(:,r);
-        x(indicies) = prod(repmat(x(r),length(indicies),1).^V,2);
+        [rows,cols,vals] = find(V);
+%         x(indicies) = prod_monomials(x,rows,cols,vals,size(V,1));
+			res = ones(1, size(V,1));
+			for r = 1:length(rows)
+				row = rows(r);
+				val = vals(r);
+				if val == 1
+					res(row) = res(row) * x(cols(r));
+				elseif val == -1
+					res(row) = res(row) / x(cols(r));
+				elseif val == -2
+					xc = x(cols(r));
+					res(row) = res(row) / (xc*xc);
+				else
+					res(row) = res(row) * x(cols(r))^val;
+				end
+			end
+			x(indicies) = res;
     end
 catch
    
@@ -61,7 +76,7 @@ if isfield(p.evalMap{1},'prearg')
     for i = indicies
         arguments = p.evalMap{i}.prearg;
         arguments{1+p.evalMap{i}.argumentIndex} = x(p.evalMap{i}.variableIndex);
-        if isequal(arguments{1},'log') & (arguments{1+p.evalMap{i}.argumentIndex}<=0)
+        if isequal(arguments{1},'log') & (arguments{1+p.evalMap{i}.argumentIndex}<=0) %#ok<AND2>
             x(p.evalVariables(i)) = -1e4;
         else
             x(p.evalMap{i}.computes(:)) = feval(arguments{:});
@@ -75,7 +90,7 @@ else
         % artificial argument
         arguments =  {p.evalMap{i}.fcn,p.evalMap{i}.arg{1:end-1}};
         arguments{1+p.evalMap{i}.argumentIndex} = x(p.evalMap{i}.variableIndex);
-        if isequal(arguments{1},'log') & (arguments{1+p.evalMap{i}.argumentIndex}<=0)
+        if isequal(arguments{1},'log') & (arguments{1+p.evalMap{i}.argumentIndex}<=0) %#ok<AND2>
             x(p.evalVariables(i)) = -1e4;  %FIXME DOES NOT WORK
             if length(arguments{2})>1
                 disp('Report bug in apply_recursive_evaluation')
@@ -89,3 +104,21 @@ else
         end
     end
 end
+
+% function out = prod_monomials(x,rows,cols,vals,n)
+% %Hint: compile this function to a mex-file.
+% out = ones(1, n);
+% for r = 1:length(rows)
+% 	row = rows(r);
+% 	val = vals(r);
+% 	if val == 1
+% 		out(row) = out(row) * x(cols(r));
+% 	elseif val == -1
+% 		out(row) = out(row) / x(cols(r));
+% 	elseif val == -2
+% 		xc = x(cols(r));
+% 		out(row) = out(row) / (xc*xc);
+% 	else
+% 		out(row) = out(row) * x(cols(r))^val;
+% 	end
+% end

@@ -1,4 +1,4 @@
-function y=min(varargin)
+function [y,loc]=min(varargin)
 %MIN (overloaded)
 %
 % t = MIN(X)
@@ -16,9 +16,6 @@ function y=min(varargin)
 %
 % See built-in MIN for syntax.
 
-% Author Johan Löfberg
-% $Id: min.m,v 1.15 2008-05-08 12:28:54 joloef Exp $
-
 % MIN is implemented as a nonlinear operator.
 % However, for performance issues, it is not
 % implemented in the default high-level way.
@@ -31,7 +28,17 @@ function y=min(varargin)
 % your own nonlinear operator, check the
 % function sdpvar/norm instead
 
-% To simplify code flow, code for different #inputs
+% To simplify code flow, code for different #output/inputs
+if nargout == 2
+    varargin{1} = -varargin{1};
+    if nargin > 1 && ~isempty(varargin{2})
+        varargin{2} = -varargin{2};
+    end
+    [y,loc] = max_with_loc(varargin{:});
+    y = -y;
+    return
+end
+
 switch nargin
     case 1
         % Three cases:
@@ -47,7 +54,7 @@ switch nargin
             
             
             X = removeInf(X);
-            if isa(X,'double')
+            if isnumeric(X)
                 y = min(X);
             elseif length(X) == 1
                 y = X;
@@ -79,7 +86,7 @@ switch nargin
             X = X*ones(ny,my);
             nx = ny;
             mx = my;
-        elseif ny==my
+        elseif ny*my==1
             Y = Y*ones(nx,mx);
             ny = nx;
             my = mx;
@@ -130,12 +137,12 @@ switch nargin
             y = [];
             for i = 1:size(X,2)
                 inparg = extsubsref(X,1:size(X,1),i);
-                if isa(inparg,'double')
+                if isnumeric(inparg)
                     y = [y min(inparg)];
                     return
                 end
                 inparg = removeInf(inparg);
-                if  isa(inparg,'double')
+                if  isnumeric(inparg)
                     y = [y min(inparg)];
                 elseif isa(inparg,'sdpvar')
                     z = yalmip('define','min_internal',inparg);

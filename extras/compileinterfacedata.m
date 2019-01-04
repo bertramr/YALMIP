@@ -1,6 +1,7 @@
 function [interfacedata,recoverdata,solver,diagnostic,F,Fremoved,ForiginalQuadratics] = compileinterfacedata(F,aux_obsolete,logdetStruct,h,options,findallsolvers,parametric)
 
 persistent CACHED_SOLVERS
+persistent allsolvers
 persistent EXISTTIME
 persistent NCHECKS
 
@@ -57,10 +58,11 @@ end
 if isa(options.radius,'sdpvar') | ~isinf(options.radius)
     x = recover(unique(union(depends(h),depends(F))));
     if length(x)>1
-        F = F + set(cone(x,options.radius));
+        F = F + (cone(x,options.radius));
     else
-        F = F + set(-options.radius <= x <= options.radius);
+        F = F + (-options.radius <= x <= options.radius);
     end
+    F = flatten(F);
 end
 
 % *************************************************************************
@@ -68,6 +70,7 @@ end
 % *************************************************************************
 [F,changed] = convertlogics(F);
 if changed
+    F = flatten(F);
     options.saveduals = 0; % Don't calculate duals since we changed the problem
 end
 
@@ -89,7 +92,7 @@ if options.expand
             variables = h1v;
         end
         extendedvariables = yalmip('extvariables');
-        index_in_extended = find(ismembc(variables,extendedvariables));
+        index_in_extended = find(ismembcYALMIP(variables,extendedvariables));
         if ~isempty(index_in_extended)
             extstruct = yalmip('extstruct',variables(index_in_extended));
             if ~isa(extstruct,'cell')
@@ -111,6 +114,7 @@ if options.expand
     catch
     end
     [F,failure,cause,operators] = expandmodel(F,h,options);
+    F = flatten(F);
     if failure % Convexity propgation failed
         interfacedata = [];
         recoverdata = [];
@@ -120,16 +124,20 @@ if options.expand
         diagnostic.info = yalmiperror(14,cause);
         return
     end
-    evalVariables = unique(determineEvaluationBased(operators));%yalmip('evalVariables');
-    %evalVariables = yalmip('evalVariables');    
+    evalVariables = unique(determineEvaluationBased(operators));
     if isempty(evalVariables)
         evaluation_based = 0;
+        exponential_cone = 0;
     else
-        evaluation_based = ~isempty(intersect([depends(h) depends(F)],evalVariables));
+        used = [depends(h) depends(F)];
+        usedevalvariables = intersect(used,evalVariables);
+        evaluation_based = ~isempty(usedevalvariables);
+        exponential_cone = isempty(setdiff(usedevalvariables,yalmip('expvariables')));
     end
 else
     evalVariables = [];
     evaluation_based = 0;    
+    exponential_cone = 0;
 end
 
 % *************************************************************************
@@ -139,7 +147,7 @@ end
 % *************************************************************************
 if (options.cachesolvers==0) | isempty(CACHED_SOLVERS)
     getsolvertime = clock;
-    solvers = getavailablesolvers(findallsolvers,options);
+    [solvers,kept,allsolvers] = getavailablesolvers(findallsolvers,options);
     getsolvertime = etime(clock,getsolvertime);
     % CODE TO INFORM USERS ABOUT SLOW NETWORKS!
     if isempty(EXISTTIME)
@@ -196,6 +204,7 @@ F_vars = getvariables(F);
 do_not_convert = any(variabletype(F_vars)==4);
 %do_not_convert = do_not_convert | ~solverCapable(solvers,options.solver,'constraint.inequalities.secondordercone');
 do_not_convert = do_not_convert | strcmpi(options.solver,'bmibnb');
+do_not_convert = do_not_convert | strcmpi(options.solver,'scip');
 do_not_convert = do_not_convert | strcmpi(options.solver,'snopt');
 do_not_convert = do_not_convert | strcmpi(options.solver,'knitro');
 do_not_convert = do_not_convert | strcmpi(options.solver,'snopt-geometric'); 
@@ -222,6 +231,8 @@ do_not_convert = do_not_convert | strcmpi(options.solver,'bmibnb');
 do_not_convert = do_not_convert | strcmpi(options.solver,'moment');
 do_not_convert = do_not_convert | strcmpi(options.solver,'sparsepop');
 do_not_convert = do_not_convert | strcmpi(options.solver,'baron');
+do_not_convert = do_not_convert | strcmpi(options.solver,'penlab');
+do_not_convert = do_not_convert | strcmpi(options.solver,'scip-nl');
 do_not_convert = do_not_convert | (options.convertconvexquad == 0);
 do_not_convert = do_not_convert | (options.relax == 1);
 if ~do_not_convert & any(variabletype(F_vars))
@@ -250,15 +261,27 @@ end
 % *************************************************************************
 %% WHAT KIND OF PROBLEM DO WE HAVE NOW?
 % *************************************************************************
-[ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars);
+[ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars,exponential_cone);
 
+% Ugly fix to short-cut any decision on GP. min -x-y cannot be cast as GP,
+% while min -x can, as we can invert the objective
+ProblemClass.gppossible = 1;
+if ~isempty(h)
+    c = getbase(h);c = c(2:end);
+    if nnz(c)>1
+     if any(c<0)
+         ProblemClass.gppossible = 0;
+     end
+    end
+end
+   
 % *************************************************************************
 %% SELECT SUITABLE SOLVER
 % *************************************************************************
-[solver,problem] = selectsolver(options,ProblemClass,solvers,socp_are_really_qc);
+[solver,problem] = selectsolver(options,ProblemClass,solvers,socp_are_really_qc,allsolvers);
 if isempty(solver)
     diagnostic.solvertime = 0;
-    if problem == -4 | problem == -3 
+    if problem == -4 || problem == -3 || problem == -9 
         diagnostic.info = yalmiperror(problem,options.solver);
     else
         diagnostic.info = yalmiperror(problem,'YALMIP');
@@ -290,7 +313,9 @@ if ProblemClass.constraint.complementarity.variable | ProblemClass.constraint.co
                         
         [F] = modelComplementarityConstraints(F,solver,ProblemClass);  
         % FIXME Reclassify should be possible to do manually!
-        [ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars);
+        oldProblemClass = ProblemClass;
+        [ProblemClass,integer_variables,binary_variables,parametric_variables,uncertain_variables,semicont_variables,quad_info] = categorizeproblem(F,logdetStruct,h,options.relax,parametric,evaluation_based,F_vars,exponential_cone);
+        ProblemClass.gppossible = oldProblemClass.gppossible;
     elseif solver.constraint.complementarity.variable
         % Solver supports x(i)*x(j)==0
         Fok = [];
@@ -319,7 +344,7 @@ end
 localsolver.qc = 0;
 localsolver = solver;
 if strcmpi(solver.tag,'bnb')
-    [solver,diagnostic] = setupBNB(solver,ProblemClass,options,solvers,socp_are_really_qc,F,h,logdetStruct,parametric,evaluation_based,F_vars);
+    [solver,diagnostic] = setupBNB(solver,ProblemClass,options,solvers,socp_are_really_qc,F,h,logdetStruct,parametric,evaluation_based,F_vars,exponential_cone,allsolvers);
     if ~isempty(diagnostic)
         return
     end 
@@ -329,7 +354,7 @@ if findstr(lower(solver.tag),'sparsecolo')
     temp_options = options;
     temp_options.solver = options.sparsecolo.SDPsolver;
     tempProblemClass = ProblemClass;   
-    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
     if isempty(localsolver) | strcmpi(localsolver.tag,'sparsecolo')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');
@@ -337,6 +362,20 @@ if findstr(lower(solver.tag),'sparsecolo')
         return
     end
     solver.sdpsolver = localsolver;
+end
+
+if findstr(lower(solver.tag),'frlib')
+    temp_options = options;
+    temp_options.solver = options.frlib.solver;
+    tempProblemClass = ProblemClass;   
+    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
+    if isempty(localsolver) | strcmpi(localsolver.tag,'frlib')
+        diagnostic.solvertime = 0;
+        diagnostic.info = yalmiperror(-2,'YALMIP');
+        diagnostic.problem = -2;
+        return
+    end
+    solver.solver = localsolver;
 end
 
 % *************************************************************************
@@ -352,7 +391,7 @@ if strcmpi(solver.tag,'mpcvx')
     tempProblemClass.objective.quadratic.convex = tempProblemClass.objective.quadratic.convex | tempProblemClass.objective.quadratic.nonconvex;
     tempProblemClass.objective.quadratic.nonconvex = 0;
     tempProblemClass.parametric = 0;
-    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
     if isempty(localsolver) | strcmpi(localsolver.tag,'bnb') | strcmpi(localsolver.tag,'kktqp')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');
@@ -375,7 +414,7 @@ if strcmpi(solver.tag,'kktqp')
     tempProblemClass.constraint.binary = 1;
     tempProblemClass.objective.quadratic.convex = 0;
     tempProblemClass.objective.quadratic.nonconvex = 0;
-    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    localsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
     if isempty(localsolver) | strcmpi(localsolver.tag,'bnb') | strcmpi(localsolver.tag,'kktqp')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');
@@ -396,7 +435,7 @@ if strcmpi(solver.tag,'lmirank')
     tempProblemClass.constraint.inequalities.rank = 0;
     tempProblemClass.constraint.inequalities.semidefinite.linear = 1;
     tempProblemClass.objective.linear = 1;
-    initialsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    initialsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
     if isempty(initialsolver) | strcmpi(initialsolver.tag,'lmirank')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');
@@ -418,7 +457,7 @@ if findstr(solver.tag,'VSDP')
     tempProblemClass.constraint.inequalities.semidefinite.linear =  tempProblemClass.constraint.inequalities.semidefinite.linear | tempProblemClass.constraint.inequalities.secondordercone;
     tempProblemClass.constraint.inequalities.secondordercone = 0;
     tempProblemClass.objective.quadratic.convex = 0;
-    initialsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    initialsolver = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
     if isempty(initialsolver) | strcmpi(initialsolver.tag,'vsdp')
         diagnostic.solvertime = 0;
         diagnostic.info = yalmiperror(-2,'YALMIP');
@@ -433,7 +472,7 @@ end
 % (UNLESS ALREADY SPECIFIED IN OPTIONS)
 % *************************************************************************
 if strcmpi(solver.tag,'bmibnb')
-    [solver,diagnostic] = setupBMIBNB(solver,ProblemClass,options,solvers,socp_are_really_qc,F,h,logdetStruct,parametric,evaluation_based,F_vars);
+    [solver,diagnostic] = setupBMIBNB(solver,ProblemClass,options,solvers,socp_are_really_qc,F,h,logdetStruct,parametric,evaluation_based,F_vars,exponential_cone,allsolvers);
     if ~isempty(diagnostic)
         return
     end   
@@ -460,7 +499,7 @@ if strcmpi(solver.tag,'cutsdp')
         error('BNB can not be used in CUTSDP. Please install and use a better MILP solver');
     end
     
-    [lowersolver,problem] = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc);
+    [lowersolver,problem] = selectsolver(temp_options,tempProblemClass,solvers,socp_are_really_qc,allsolvers);
 
     if ~isempty(lowersolver) & strcmpi(lowersolver.tag,'bnb')
         error('BNB can not be used in CUTSDP. Please install and use a better MILP solver');
@@ -476,13 +515,13 @@ if strcmpi(solver.tag,'cutsdp')
 end
 
 showprogress(['Solver chosen : ' solver.tag],options.showprogress);
-% 
-% % *************************************************************************
-% %% CONVERT SOS2 to binary constraints
-% % *************************************************************************
-% if  ProblemClass.constraint.sos2 & ~solver.constraint.sos2
-%     [F,binary_variables] = convertsos2(F,binary_variables);
-% end
+ 
+% *************************************************************************
+%% CONVERT SOS2 to binary constraints for solver not supporting sos2
+% *************************************************************************
+if  ProblemClass.constraint.sos2 & ~solver.constraint.sos2
+    [F,binary_variables] = expandsos2(F,binary_variables);
+end
 
 % *************************************************************************
 %% CONVERT MAXDET TO SDP USING GEOMEAN?
@@ -491,10 +530,24 @@ showprogress(['Solver chosen : ' solver.tag],options.showprogress);
 if ~isempty(logdetStruct)
     if isequal(solver.tag,'BNB')
         can_solve_maxdet = solver.lower.objective.maxdet.convex;
+        can_solve_expcone = solver.lower.exponentialcone;
     else
         can_solve_maxdet = solver.objective.maxdet.convex;
+        can_solve_expcone = solver.exponentialcone;
     end
     if ~can_solve_maxdet
+        if isempty(h)
+            h = 0;
+        end
+        if 0%can_solve_expcone
+            for i = 1:length(logdetStruct.P)
+                [vi,Modeli] = eigv(logdetStruct.P{i});
+                F = [F, Modeli, logdetStruct.P{i} >= 0];
+                log_vi = log(vi);
+                h = h + logdetStruct.gain(i)*sum(log_vi);
+                evalVariables = union(evalVariables,getvariables( log_vi));
+            end
+        else
         t = sdpvar(1,1);
         Ptemp = [];
         for i = 1:length(logdetStruct.P)
@@ -509,33 +562,29 @@ if ~isempty(logdetStruct)
         F = F + detset(t,P{1});
         if isempty(h)
             h = -t;
+            if length(logdetStruct.P) > 1 && options.verbose>0 && options.warning>0
+                disp(' ')
+                disp('Objective -sum logdet(P_i) has been changed to -sum det(P_i)^(1/(2^ceil(log2(length(P_i))))).')
+                disp('This is not an equivalent transformation. You should use SDPT3 which supports MAXDET terms')
+                disp('See the MAXDET section in the manual for details.')
+                disp(' ')
+            end
         else
             h = h-t;
             % Warn about logdet -> det^1/m
             if options.verbose>0 & options.warning>0
                 disp(' ')
-                disp('Objective c''x-logdet(P) has been changed to c''x-det(P)^(1/(2^ceil(log2(length(X))))).')
+                disp('Objective c''x-sum logdet(P_i) has been changed to c''x-sum det(P_i)^(1/(2^ceil(log2(length(P_i))))).')
+                disp('This is not an equivalent transformation. You should use SDPT3 which supports MAXDET terms')
                 disp('See the MAXDET section in the manual for details.')
                 disp(' ')
             end
         end
+        end
         P = [];
+        logdetStruct = [];
     end
 end
-
-% % *************************************************************************
-% %% Change SOS2 to binary model
-% % *************************************************************************
-% old_binary_variables = binary_variables;
-% if ~isempty(binary_variables) & (solver.constraint.binary==0)
-%     x_bin = recover(binary_variables(ismember(binary_variables,unique([getvariables(h) getvariables(F)]))));
-%     F = F + set(x_bin<1)+set(x_bin>0);
-%     integer_variables = union(binary_variables,integer_variables);
-%     binary_variables = [];
-% end
-% if  ProblemClass.constraint.semicont & ~solver.constraint.semivar
-%      [F,binary_variables] = convertsos2(F,binary_variables);
-% end
 
 % *************************************************************************
 %% Change binary variables to integer?
@@ -543,7 +592,7 @@ end
 old_binary_variables = binary_variables;
 if ~isempty(binary_variables) & (solver.constraint.binary==0)
     x_bin = recover(binary_variables(ismember(binary_variables,unique([getvariables(h) getvariables(F)]))));
-    F = F + set(x_bin<1)+set(x_bin>0);
+    F = F + (x_bin<=1)+(x_bin>=0);
     integer_variables = union(binary_variables,integer_variables);
     binary_variables = [];
 end
@@ -572,12 +621,19 @@ if convertQuadraticObjective
     if ~isempty(R)
         c = quad_info.c;
         f = quad_info.f;
-        F = F + lmi(cone([2*R*x;1-(t-c'*x-f)],1+t-c'*x-f));
-        h = t;
+        F = F + lmi(cone([2*R*x;1-(t-f)],1+t-f));
+        h = t+c'*x;
+        if options.usex0
+            xx = value(x);
+            ff = norm(quad_info.R*xx)^2+f;
+            if ~isnan(ff)
+                assign(t,ff);
+            end
+        end
     end
     quad_info = [];
 end
-if solver.constraint.inequalities.rotatedsecondordercone == 0
+if solver.constraint.inequalities.rotatedsecondordercone.linear == 0
     [F,changed] = convertlorentz(F);
     if changed
         options.saveduals = 0; % We cannot calculate duals since we change the problem
@@ -609,7 +665,7 @@ end
 % *************************************************************************
 if ~isempty(logdetStruct) & solver.objective.maxdet.convex==1 & solver.constraint.inequalities.semidefinite.linear
     for i = 1:length(logdetStruct.P)
-        F = F + set(logdetStruct.P{i} >= 0);
+        F = F + (logdetStruct.P{i} >= 0);
         if ~isreal(logdetStruct.P{i})
             logdetStruct.gain(i) = logdetStruct.gain(i)/2;
             ProblemClass.complex = 1;
@@ -633,7 +689,7 @@ end
 % *************************************************************************
 %% CREATE OBJECTIVE FUNCTION c'*x+x'*Q*x
 % *************************************************************************
-showprogress('Processing objective h(x)',options.showprogress);
+showprogress('Processing objective function',options.showprogress);
 try
     % If these solvers, the Q term is placed in c, hence quadratic terms
     % are treated as any other nonlinear term
@@ -658,7 +714,7 @@ end
 % *************************************************************************
 %% Convert {F(x),G(x)} to a numerical SeDuMi-like format
 % *************************************************************************
-showprogress('Processing F(x)',options.showprogress);
+showprogress('Processing constraints',options.showprogress);
 F = lmi(F);
 [F_struc,K,KCut,schur_funs,schur_data,schur_variables] = lmi2sedumistruct(F);
 % We add a field to remember the dimension of the logarithmic cost.
@@ -711,7 +767,7 @@ else
     nonlinearvariables = find(variabletype);
     linearvariables = used_variables(find(variabletype(used_variables)==0));
 end
-needednonlinear = nonlinearvariables(ismembc(nonlinearvariables,used_variables));
+needednonlinear = nonlinearvariables(ismembcYALMIP(nonlinearvariables,used_variables));
 linearinnonlinear = find(sum(abs(monomtable(needednonlinear,:)),1));
 missinglinear = setdiff(linearinnonlinear(:),linearvariables);
 used_variables = uniquestripped([used_variables(:);missinglinear(:)]);
@@ -761,7 +817,7 @@ if length(used_variables)<yalmip('nvars')
         Q = Q(:,used_variables);Q = Q(used_variables,:);
     else
         [i,j,s] = find(Q);
-        keep = ismembc(i,used_variables) & ismembc(j,used_variables);
+        keep = ismembcYALMIP(i,used_variables) & ismembcYALMIP(j,used_variables);
         i = i(keep);
         j = j(keep);
         s = s(keep);
@@ -773,6 +829,8 @@ if length(used_variables)<yalmip('nvars')
                         
     if ~isempty(F_struc)
         F_struc = sparse(F_struc(:,[1 1+used_variables]));
+    elseif size(F_struc,1) == 0
+        F_struc = [];
     end
 end
 
@@ -821,6 +879,9 @@ if ~isempty(K.sos)
     end
 end
 
+% if ~isempty(semicont_variables) &&  ~solver.constraint.semivar
+%     [F_struc,K,binary_variables] = expandsemivar(F_struc,K,semicont_variables);
+% end
 % *************************************************************************
 %% Equality constraints not supported or supposed to be removed
 % *************************************************************************
@@ -833,9 +894,14 @@ oldc = [];
 oldK = K;
 Fremoved = [];
 if (K.f>0)
+    if (isequal(solver.tag,'BNB') && ~solver.lower.constraint.equalities.linear) ||  (isequal(solver.tag,'BMIBNB') && ~solver.lowersolver.constraint.equalities.linear)
+        badLower = 1;
+    else
+        badLower = 0;
+    end
     % reduce if user explicitely says remove, or user says nothing but
     % solverdefinitions does, and there are no nonlinear variables
-    if ((options.removeequalities==1 | options.removeequalities==2) & isempty(intersect(used_variables,nonlinearvariables))) | ((options.removeequalities==0) & (solver.constraint.equalities.linear==-1))
+    if ~badLower && ((options.removeequalities==1 | options.removeequalities==2) & isempty(intersect(used_variables,nonlinearvariables))) | ((options.removeequalities==0) & (solver.constraint.equalities.linear==-1))
         showprogress('Solving equalities',options.showprogress);
         [x_equ,H,A_equ,b_equ,factors] = solveequalities(F_struc,K,options.removeequalities==1);
         % Exit if no consistent solution exist
@@ -858,7 +924,7 @@ if (K.f>0)
         F_struc = F_struc(K.f+1:end,:);
         K.f = 0;
         Fold = F;
-        [nlmi neq]=size(F);
+        [nlmi neq]=sizeOLD(F);
         iseq = is(Fold(1:(nlmi+neq)),'equality');
         F = Fold(find(~iseq));
         Fremoved = Fold(find(iseq));
@@ -873,7 +939,7 @@ if (K.f>0)
             solution.optvar = x_equ;
             % And we are done! Save the result
             % Note, no dual is saved
-            sdpvar('setSolution',solution);
+            yalmip('setSolution',solution);
             p = checkset(F);
             if any(p<1e-5)
                 diagnostic.info = yalmiperror(1,'YALMIP');
@@ -889,10 +955,11 @@ if (K.f>0)
         Q = H'*Q*H;Q=((Q+Q')/2);
         % LMI in new basis
         F_struc = [F_struc*[1;x_equ] F_struc(:,2:end)*H];
-    else
+    else      
         % Solver does not support equality constraints and user specifies
-        % double-sided inequalitis to remove them
-        if (solver.constraint.equalities.linear==0 | options.removeequalities==-1)
+        % double-sided inequalitis to remove them, or solver is used from
+        % lmilab or similiar solver
+        if (solver.constraint.equalities.linear==0 | options.removeequalities==-1 | badLower)
             % Add equalities
             F_struc = [-F_struc(1:1:K.f,:);F_struc];
             K.l = K.l+K.f*2;
@@ -917,6 +984,9 @@ end
 % *************************************************************************
 x0 = [];
 if options.usex0
+    if solver.supportsinitial == 0
+        error('You have specified an initial point, but the selected solver does not support warm-starts through YALMIP');
+    end
     if options.relax
         x0_used = relaxdouble(recover(used_variables));
     else
@@ -968,29 +1038,65 @@ end
 % Sanity check
 if ~isempty(c)
     if any(isnan(c) )
-        error('You have NaNs in your objective!. Read more: http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Extra.NANInModel')
+        error('You have NaNs in your objective!. Read more: https://yalmip.github.io/naninmodel/')
     end
 end
 if ~isempty(Q)
     if any(any(isnan(Q)))
-        error('You have NaNs in your quadratic objective!. Read more: http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Extra.NANInModel')
+        error('You have NaNs in your quadratic objective!. Read more: https://yalmip.github.io/naninmodel/')
     end
 end
 if ~isempty(lb)
     if any(isnan(lb))
-        error('You have NaNs in a lower bound!. Read more: http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Extra.NANInModel')
+        error('You have NaNs in a lower bound!. Read more: https://yalmip.github.io/naninmodel/')
     end
 end
 if ~isempty(ub)
     if any(isnan(ub))
-        error('You have NaNs in an upper bound!.Read more: http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Extra.NANInModel')
+        error('You have NaNs in an upper bound!.Read more: https://yalmip.github.io/naninmodel/')
     end
 end
 if ~isempty(F_struc)
     if any(any(isnan(F_struc)))
-        error('You have NaNs in your constraints!. Read more: http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Extra.NANInModel')        
+        error('You have NaNs in your constraints!. Read more: https://yalmip.github.io/naninmodel/')        
     end
 end
+
+% *************************************************************************
+%% Does the solver support high precision input? If not, make sure the 
+% input is only double precision.
+% *************************************************************************
+
+if solver.supportshighprec ~= 1
+    if isa(F_struc, 'gem') || isa(F_struc, 'sgem')
+        F_struc = double(F_struc);
+    end
+    if isa(c, 'gem') || isa(c, 'sgem')
+        c = double(c);
+    end
+    if isa(Q, 'gem') || isa(Q, 'sgem')
+        Q = double(Q);
+    end
+    if isa(f, 'gem') || isa(f, 'sgem')
+        f = double(f);
+    end
+    if isa(lb, 'gem') || isa(lb, 'sgem')
+        lb = double(lb);
+    end
+    if isa(ub, 'gem') || isa(ub, 'sgem')
+        ub = double(ub);
+    end
+    if isa(x0, 'gem') || isa(x0, 'sgem')
+        x0 = double(x0);
+    end
+    if isa(oldF_struc, 'gem') || isa(oldF_struc, 'sgem')
+        oldF_struc = double(oldF_struc);
+    end
+    if isa(oldc, 'gem') || isa(oldc, 'sgem')
+        oldc = double(oldc);
+    end
+end
+
 
 % *************************************************************************
 %% GENERAL DATA EXCHANGE WITH SOLVER
@@ -1029,12 +1135,16 @@ interfacedata.Fremoved = Fremoved;
 interfacedata.evalMap = evalMap;
 interfacedata.evalVariables = evalVariables;
 interfacedata.evaluation_scheme = [];
+interfacedata.lift = [];
 if strcmpi(solver.tag,'bmibnb')
     interfacedata.equalitypresolved = 0;
+    interfacedata.presolveequalities = 1;
 else
     interfacedata.equalitypresolved = 1;
+    interfacedata.presolveequalities = 1;
 end
 interfacedata.ProblemClass = ProblemClass;
+interfacedata.dualized = is(F,'dualized');
 
 % *************************************************************************
 %% GENERAL DATA EXCANGE TO RECOVER SOLUTION AND UPDATE YALMIP VARIABLES
@@ -1082,7 +1192,7 @@ if ~isempty(evalVariables)
                 end
             end
             n = length(X);
-            if isequal(getbase(X),[zeros(n,1) eye(n)])% & is(evalMap{i}.arg{1},'linear')
+            if isequal(getbase(X),[spalloc(n,1,0) speye(n)])% & is(evalMap{i}.arg{1},'linear')
                 for j = 1:length(evalMap{i}.arg)-1
                     % The last argument is the help variable z in the
                     % transformation from f(ax+b) to f(z),z==ax+b. We should not
@@ -1111,7 +1221,7 @@ if ~isempty(evalVariables)
             nonlinearvariables = find(variabletype);
             linearvariables = used_variables(find(variabletype(used_variables)==0));
         end
-        needednonlinear = nonlinearvariables(ismembc(nonlinearvariables,used_variables));
+        needednonlinear = nonlinearvariables(ismembcYALMIP(nonlinearvariables,used_variables));
         linearinnonlinear = find(sum(abs(monomtable(needednonlinear,:)),1));
         missinglinear = setdiff(linearinnonlinear(:),linearvariables);
         used_variables = uniquestripped([used_variables(:);missinglinear(:)]);
@@ -1132,7 +1242,7 @@ if ~isempty(evalVariables)
                 end
             end
             n = length(X);
-            if isequal(getbase(X),[zeros(n,1) eye(n)])
+            if isequal(getbase(X),[spalloc(n,1,0) speye(n)])
                 index = ismember(used_variables,getvariables(X));
                 evalMap{i}.variableIndex = find(index);
             else
@@ -1155,25 +1265,6 @@ for i = 1:length(operators)
         evalVariables = [evalVariables operators{i}.properties.models];
     end
 end
-
-
-function  [Fout,binary_variables] = convertsos2(F,binary_variables)
-Fout = [];
-for i = 1:length(F)
-    sos2i = is(F,'sos2');
-    Fout = [Fout,F(find(~sos2i))];
-    for i = find(sos2i(:))'
-        lambda = recover(getvariables(F(i)));
-        n = length(lambda)-1;
-        r = binvar(n,1);binary_variables = [binary_variables,getvariables(r)];
-        Fout = [Fout,lambda(0+1) <= r(1), sum(r)==1];
-        for l =1:n-1
-            Fout = [Fout,lambda(l+1)-r(l)-r(l+1) < 0];
-        end
-        Fout = [Fout,lambda(end)<r(end)];
-    end
-end
-
 
 function [Fnew,changed] = convertsocp2NONLINEAR(F);
 changed = 0;

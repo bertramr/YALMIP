@@ -1,8 +1,5 @@
 function output = calllmilab(interfacedata)
 
-% Author Johan Löfberg
-% $Id: calllmilab.m,v 1.4 2005-05-07 13:53:20 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -14,7 +11,7 @@ lb      = interfacedata.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 % Define lmilab variables (is this the way to do it?)
@@ -65,13 +62,27 @@ end
 
 % Solve...
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-solvertime = clock; 
+solvertime = tic;
 if nnz(c)==0
     [copt,x]=feasp(lmisys,ops);
 else
     [copt,x]=mincx(lmisys,full(c),ops);
 end
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
+
+% Nag!
+display('#############################################################');
+display('You are using LMILAB. Please don''t use LMILAB with YALMIP');
+display('https://yalmip.github.io/solver/lmilab/');
+display(' ');
+display('Install a better SDP solver');
+display('https://yalmip.github.io/allsolvers/');
+display(' ');
+display('To get rid of this message, edit calllmilab.m  ');
+display('(but don''t expect support when things do not work,')
+display('YALMIP + LMILAB => No support)')
+display('#############################################################');
+
 
 % No status
 if isempty(x)
@@ -101,11 +112,4 @@ else
 end
 
 % Standard interface 
-output.Primal      = x;
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(x,D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);

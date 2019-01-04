@@ -1,4 +1,4 @@
-function y = max(varargin)
+function [y,loc] = max(varargin)
 %MAX (overloaded)
 %
 % t = max(X)
@@ -16,16 +16,20 @@ function y = max(varargin)
 %
 % See built-in MAX for syntax.
 
-% Author Johan Löfberg
-% $Id: max.m,v 1.23 2008-05-08 12:28:54 joloef Exp $
-
-% To simplify code flow, code for different #inputs
+% To simplify code flow, code for different #output/inputs
+if nargout == 2
+    [y,loc] = max_with_loc(varargin{:});
+    return
+end
+        
 switch nargin
     case 1
-        % Three cases:
+        % Four cases:
         % 1. One scalar input, return same as output
         % 2. A vector input should give scalar output
         % 3. Matrix input returns vector output
+        % 4. User wants location index
+                      
         X = varargin{1};
         
         if max(size(X))==1
@@ -33,7 +37,9 @@ switch nargin
             return
         elseif min(size(X))==1
             X = removeInf(X);
-            if isa(X,'double')
+            if numel(X) == 0
+                y = -inf;
+            elseif isnumeric(X)
                 y = max(X);
             elseif length(X) == 1
                 y = X;
@@ -110,7 +116,9 @@ switch nargin
                 inparg = extsubsref(X,1:size(X,1),i);
                 if isa(inparg,'sdpvar')
                     inparg = removeInf(inparg);
-                    if  isa(inparg,'double')
+                    if  numel(inparg)==0
+                        y = [y -inf];
+                    elseif isnumeric(inparg)
                         y = [y max(inparg)];
                     elseif length(inparg) == 1
                         y = [y max(inparg)];

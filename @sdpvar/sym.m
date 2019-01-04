@@ -25,17 +25,16 @@ function symb_pvec = sdisplay(pvec,symbolicname)
 %      'x^2+y^2+ryv(5)^2+ryv(6)^2'
 
 
-% Author Johan Löfberg
+% Author Johan Lï¿½fberg
 % $Id: sym.m,v 1.1 2005-02-22 16:50:11 johanl Exp $
 allnames = {};
 for pi = 1:size(pvec,1)
     for pj = 1:size(pvec,2)
         Y.type = '()';
         Y.subs = [{pi} {pj}];
-        p = subsref(pvec,Y);
-      %  p = pvec(pi,pj);
+        p = subsref(pvec,Y);    
         
-        if isa(p,'double')
+        if isnumeric(p)
             symb_p = num2str(p);
         else
             LinearVariables = depends(p);

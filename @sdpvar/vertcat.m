@@ -1,9 +1,6 @@
 function y = vertcat(varargin)
 %VERTCAT (overloaded)
 
-% Author Johan Löfberg 
-% $Id: vertcat.m,v 1.15 2010-01-13 13:49:20 joloef Exp $   
-
 prenargin = nargin;
 % Fast exit
 if prenargin<2
@@ -61,8 +58,14 @@ m = m(1);
 sumn=sum(n);
 shift=[0;cumsum(n)];
 for j = 1:nblocks
-    if isasdpvar(j)
-        in_this = find(ismembc(all_lmi_variables,varargin{j}.lmi_variables));
+    if isasdpvar(j)        
+        if length(all_lmi_variables)==length(varargin{j}.lmi_variables) && all_lmi_variables(1)==varargin{j}.lmi_variables(1) &&  all_lmi_variables(end)==varargin{j}.lmi_variables(end)
+            % Avoid call to ismember and find
+            in_this = 1:length(all_lmi_variables);
+        else
+            members = ismembcYALMIP(all_lmi_variables,varargin{j}.lmi_variables);
+            in_this = find(members);
+        end
         dummy = [1 1+in_this];
         [i2,j2,s2] = find(varargin{j}.basis);
         j2 = dummy(j2);
@@ -86,6 +89,7 @@ y.lmi_variables = all_lmi_variables;
 % Reset info about conic terms
 y.conicinfo = [0 0];
 y.extra.opname='';
+y.extra.createTime = definecreationtime;
 y = unfactor(y);
 
 % Update the factors
@@ -108,7 +112,7 @@ for i = 1:length(varargin)
             y.midfactors{end+1} = varargin{i}.midfactors{j};
             y.rightfactors{end+1} = varargin{i}.rightfactors{j};
         end
-    elseif isa(varargin{i},'double')       
+    elseif isnumeric(varargin{i})
         here = length(y.midfactors)+1;
         doublehere = [doublehere here];      
         y.leftfactors{here} = [spalloc(sum(n(1:1:i-1)),size(varargin{i},1),0); speye(size(varargin{i},1)); spalloc(sum(n(i+1:1:end)),size(varargin{i},1),0)];
