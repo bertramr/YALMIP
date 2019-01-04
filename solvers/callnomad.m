@@ -1,19 +1,29 @@
 function output = callnomad(model)
 
-% Author Johan Löfberg
-% $Id: callnomad.m,v 1.6 2009-09-29 10:30:15 joloef Exp $
-
+%model.presolveequalities = 1;
+%model.equalitypresolved = 0;
 model = yalmip2nonlinearsolver(model);
 
 % Nomad does not need derivatives, so let us inform our callbacks that we
 % don't need there
 model.derivative_available = 0;
 
-nlrhs = [model.bnonlinineq*0;model.b*0];
+% Note, nomad does not support equalities, so we place in equalities
+nlrhs = [model.bnonlinineq*0;model.b*0;
+         model.bnonlineq*0;model.bnonlineq*0;
+         model.beq*0;model.beq*0];
 if isempty(nlrhs)
     % clean
     nlrhs = [];
 end
+model.Anonlinineq = [model.Anonlinineq;model.Anonlineq;-model.Anonlineq];
+model.Anonlineq = [];
+model.bnonlinineq = [model.bnonlinineq;model.bnonlineq;-model.bnonlineq];
+model.bnonlineq = [];
+model.A = [model.A;-model.Aeq;model.Aeq];
+model.Aeq = [];
+model.b = [model.b;-model.beq;model.beq];
+model.beq = [];
 
 % These are needed to avoid recomputation due to ipopts double call to get
 % f and df, and g and dg
@@ -55,9 +65,9 @@ opts = model.options.nomad;
 opts.display_degree = model.options.verbose;
 
 showprogress('Calling NOMAD',model.options.showprogress);
-solvertime = clock;
+solvertime = tic;
 [x,fval,exitflag,iter,nfval] = nomad(funcs.objective,model.x0,lb,ub,funcs.constraints,nlrhs,xtype,opts);
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
 
 % Duals currently not supported
 lambda = [];

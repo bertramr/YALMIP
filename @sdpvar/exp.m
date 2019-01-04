@@ -1,7 +1,6 @@
 function varargout = exp(varargin)
 %EXP (overloaded)
 
-% Author Johan Löfberg
 switch class(varargin{1})
 
     case 'sdpvar'
@@ -11,10 +10,20 @@ switch class(varargin{1})
         y = [];
         for i = 1:prod(d)
             xi = extsubsref(x,i);
-            if isreal(xi)
-                y = [y;InstantiateElementWise(mfilename,xi)];
+            if isnumeric(xi)
+                y = [y;exp(xi)];
             else
-                y = [y;cos(xi) + sqrt(-1)*sin(xi)];
+                if isreal(xi)
+                    if i>1
+                        y = [y;InstantiateElementWise(mfilename,xi)];
+                    else
+                        y = InstantiateElementWise(mfilename,xi);
+                    end
+                else
+                    re = real(xi);
+                    im = imag(xi);
+                    y = [y;exp(re)*(cos(im) + sqrt(-1)*sin(im))];
+                end
             end
         end
         varargout{1} = reshape(y,d);

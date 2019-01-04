@@ -66,6 +66,34 @@ nInitial = yalmip('nvars');
 x = VariableType.x;
 w = VariableType.w;
 
+if isempty(x)
+    error('There are no decision variables in the uncertain model.')
+end
+
+if isempty(UncertainModel.F_xw)
+    error('The uncertainty does not enter the model anywhere.');
+end
+
+% Experimental code for conic-conic case
+if ops.robust.coniclp.useconicconic || ((any(is(UncertainModel.F_xw,'sdp')) ||  any(is(UncertainModel.F_xw,'socp'))) && (any(is(Uncertainty.F_w,'sdp')) ||  any(is(Uncertainty.F_w,'socp'))))
+    SOSModel = [];
+    for i = 1:length(UncertainModel.F_xw)
+        if any(ismember(depends(UncertainModel.F_xw(i)),getvariables(VariableType.w)))
+            SOSModel = [SOSModel, dualtososrobustness(UncertainModel.F_xw(i),Uncertainty.F_w,VariableType.w,VariableType.x,ops.robust.conicconic.tau_degree,ops.robust.conicconic.gamma_degree,ops.robust.conicconic.Z_degree)];
+        else
+            % Misplaced?
+            SOSModel = [SOSModel, UncertainModel.F_xw(i)];
+        end
+    end
+    %SOSModel = expanded(SOSModel,1);
+    F = [SOSModel, UncertainModel.F_x];
+    h = UncertainModel.h;
+    h = expanded(h,1);
+    F = expanded(F,1); % This is actually done already in expandmodel
+   % h = expanded(h,1); % But this one has to be done manually
+  
+    return
+end
 
 % FIXME: SYNC with expandmodel?
 if ~isempty(UncertainModel.F_x)
@@ -89,10 +117,12 @@ end
 % 5. Duality:     Linear uncertainty dependence, conic uncertainty, can
 %                 only be applied on LP constraints
 % 6. S-procedure  Special case, quadratic dependence in elementwise, one
-%                 quadratic constraint in W
+%                 quadratic constraint in W (obsolete)
+% 7. Conic conic  Subsumes S-procedure
+
 
 % Robust model
-F_robust = set([]);
+F_robust = ([]);
 
 % We begin by checking to see if the user wants to apply Polyas theorem.
 % If that is the case, search for simplex structures, and apply Polyas.
@@ -181,7 +211,7 @@ if enumerationfailed
         nv = yalmip('nvars');
         F_filter = filter_duality(F_lp,Uncertainty.Zmodel,x,w,ops);
         if ops.verbose
-            if isa(F_filter','lmi')
+            if isa(F_filter,'lmi')
              disp([' - Duality introduced ' num2str(yalmip('nvars')-nv') ' variables, ' num2str(nnz(is(F_filter,'equality'))) ' equalities, ' num2str(nnz(is(F_filter,'elementwise'))) ' LP inqualities and ' num2str(nnz(is(F_filter,'sdp'))+nnz(is(F_filter,'socp'))) ' conic constraints']);
             end
         end
@@ -306,8 +336,8 @@ function [VariableType,h_fixed,F_xw] = reformatObjective(h,F_xw,VariableType)
 x = recover(VariableType.x_variables);
 w = recover(VariableType.w_variables);
 xw = [x;w];
-xind = find(ismembc(getvariables(xw),getvariables(x)));
-wind = find(ismembc(getvariables(xw),getvariables(w)));
+xind = find(ismembcYALMIP(getvariables(xw),getvariables(x)));
+wind = find(ismembcYALMIP(getvariables(xw),getvariables(w)));
 % Analyze the objective and try to rewrite any uncertainty into the format
 % assumed by YALMIP
 if ~isempty(h)
@@ -337,7 +367,7 @@ if ~isempty(h)
             h_fixed = h;
         else
             sdpvar t
-            F_xw = F_xw + set(h < t);
+            F_xw = F_xw + (h <= t);
             h_fixed = t;
             x = [x;t];
         end
@@ -346,7 +376,7 @@ if ~isempty(h)
         h_uncertain = 2*w'*Q_xw'*x + c_w'*w;
         if ~isa(h_uncertain,'double')
             sdpvar t
-            F_xw = F_xw + set(h_uncertain < t);
+            F_xw = F_xw + (h_uncertain <= t);
             h_fixed = h_fixed + t;
             x = [x;t];
         end

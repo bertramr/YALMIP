@@ -1,8 +1,5 @@
 function output = callpenbmi(interfacedata);
 
-% Author Johan Löfberg
-% $Id: callpenbmi.m,v 1.5 2005-05-07 13:53:20 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -17,7 +14,7 @@ lb      = interfacedata.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 if K.f>0
@@ -128,7 +125,7 @@ if options.savedebug
 end
 
 showprogress('Calling PENBMI',options.showprogress);
-solvertime = clock;
+solvertime = tic;
 try    
     if all(c==0)
         [xout, fx, u, iresults, fresults, iflag] = pen(penstruct,1);
@@ -143,7 +140,7 @@ catch
         [xout, fx, u, iresults, fresults, iflag] = pen(penstruct);
     end    
 end
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
 
 % Get dual variable
 % First, get the nonlinear scalars treated as BMIs
@@ -230,12 +227,5 @@ else
     solverinput = [];
 end
 
-% Standard interface
-output.Primal      = x(:);
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+% Standard interface 
+output = createOutputStructure(x(:),D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);

@@ -10,9 +10,6 @@ function Z = replace(X,Y,W,expand)
 %  Y = [1+t;1+x+t];
 %  Y = replace(Y,x,2) generates Y=[1+t;3+t]
 
-% Author Johan Löfberg
-% $Id: replace.m,v 1.21 2007-08-29 13:17:04 joloef Exp $
-
 if nargin<4
     expand = 1;
 end
@@ -42,8 +39,10 @@ if ~isequal(size(Y),size(W))
 end
 
 if max(size(Y))>1
- [Y,keptY] = unique(reshape(Y,[],1));
- W = extsubsref(W,keptY);
+    if ~isequal(Y.basis(:,2:end),speye(prod(Y.dim)))            
+        [Y,keptY] = unique(reshape(Y,[],1));
+        W = extsubsref(W,keptY);
+    end
 end
 
 if isa(W,'sdpvar')
@@ -52,8 +51,8 @@ if isa(W,'sdpvar')
     return
 end
 
-if ~isa(W,'double')
-    error('Third arguments must be a double')
+if ~isnumeric(W)
+    error('Third arguments must be numeric')
 end
 
 % Replace with NaN   destroys everything, assume it should be cleared
@@ -97,9 +96,13 @@ if all(variabletype(x_lmi_variables)==0) % is(X,'linear')
     v = v + sparse(i2,ones(length(i2),1),feas_var(v2),length(x_lmi_variables),1);
     Z = Z + X.basis(:,2:end)*v;
 else
-    for i = 1:length(Y)
-        replaced_vars(i) = getvariables(extsubsref(Y,i));
-    end
+    base = getbase(Y);base = base(:,2:end);
+    [i,j,k] = find(base);
+    replaced_vars = getvariables(Y);
+    replaced_vars = replaced_vars(i);
+    %for i = 1:length(Y)
+    %    replaced_vars(i) = getvariables(extsubsref(Y,i));
+    %end
     % used_variables = getvariables(X);
     used_variables = x_lmi_variables;
     %  monomtable = yalmip('monomtable');

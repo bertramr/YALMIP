@@ -13,7 +13,7 @@ h = varargin{2};
 nvars = yalmip('nvars');
 
 if isa(F,'constraint')
-    F = set(F);
+    F = lmi(F);
 end
 
 if any(is(F,'socp'))
@@ -121,4 +121,5 @@ else
 end
 
 % Save to file
-createsdplibfile(F_struc, K, c, filename);
+integer_variables = find(ismember(used_variables,yalmip('intvariables')));
+createsdplibfile(F_struc, K, c, filename,integer_variables);

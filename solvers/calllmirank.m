@@ -1,8 +1,5 @@
 function output = calllmirank(interfacedata)
 
-% Author Johan Löfberg
-% $Id: calllmirank.m,v 1.10 2005-06-06 16:42:13 joloef Exp $
-
 % Retrieve needed data
 options = interfacedata.options;
 F_struc = interfacedata.F_struc;
@@ -14,7 +11,7 @@ lb      = interfacedata.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 pars = options.lmirank;
@@ -52,15 +49,14 @@ if options.savedebug
 end
 
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-solvertime = clock; 
+solvertime = tic;
 if options.usex0
     [y,info] = lmirank(-F_struc(:,2:end),F_struc(:,1),K,pars,x0);
 else
     [y,info] = lmirank(-F_struc(:,2:end),F_struc(:,1),K,pars);
 end
+solvertime = toc(solvertime);
 x = y;
-solvertime = etime(clock,solvertime);
-
 
 switch info.solved
     case 1
@@ -68,9 +64,6 @@ switch info.solved
     otherwise
         problem = 11;
 end
-
-% Duals not computed
-D_struc = [];
 
 % Save ALL data sent to solver
 if options.savesolverinput
@@ -92,10 +85,5 @@ else
 end
 
 % Standard interface 
-output.Primal      = x;
-output.Dual        = [];
-output.Slack       = [];
-output.problem     = problem;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+infostr = yalmiperror(problem,interfacedata.solver.tag);	
+output = createOutputStructure(x,[],[],problem,infostr,solverinput,solveroutput,solvertime);

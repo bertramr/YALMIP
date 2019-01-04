@@ -10,10 +10,10 @@ end
 
 % Normalize data
 if isa(Y,'constraint')
-    Y=set(Y,[],[],1);
+    Y=lmi(Y,[],[],1);
 end
 if isa(X,'constraint')
-    X=set(X,[],[],1);
+    X=lmi(X,[],[],1);
 end
 if isa(X,'lmi') & isa(Y,'sdpvar')
     temp = X;
@@ -70,7 +70,13 @@ else
     f = reshape(f,nf*mf,1);
     di = binvar(nf*mf,1);
     F = linearnegativeconstraint_iff_binary(f,di,M,m,zero_tolerance);
-    F = [F, X>=sum(di)-length(di)+1, X <= di];
+    if length(X)==1
+        % X is true if any di
+        F = [F, X>=sum(di)-length(di)+1, X <= di];
+    else
+        % This must be a vectorized X(i) iff f(i)
+        F = [F, di == X];
+    end
     
     % di=0 means the ith hypeplane is violated
     % X=1 means we are in the polytope
@@ -90,12 +96,20 @@ else
     end
     if size(S,1) > 0
         % Add cut cannot be outside both constraints
-        F = F + set(S*di >= 1);
+        F = F + (S*di >= 1);
     end
 end
 
 function F = binary_iff_equality(X,Y,zero_tolerance)
 
+% Things like iff(x,y==1) is sent as X, 1-Y
+if isLogicalVector(X) && isLogicalVector(Y)
+    if isequal(getbase(Y),[0 -1]) | isequal(getbase(Y),[-1 1])
+        Y = -Y;
+    end
+     F = [1-X == Y];
+     return
+ end
 Y = Y(:);
 d = binvar(length(Y),3);
 % We have to model every single line of equality.
@@ -123,3 +137,21 @@ for i = 1:length(Y)
 end
 % X is true if all di2 are true and v.v
 F = [C,X <= d(:,2), X >= sum(d(:,2))-length(Y)+1];
+
+function yes = isLogicalVector(X)
+yes = 0;
+X = sdpvar(X);
+B = getbase(X);
+if all(ismember(depends(X),yalmip('binvariables')))
+    b = B(:,1);
+    if all(b==0 | b==1)
+        A = B(:,2:end);
+        if all(A == 0 | A == 1 | A == -1)
+            if all(sum(A | A,2)==1)
+                if all(sum(B,2)<= 1)
+                    yes = 1;
+                end
+            end
+        end
+    end        
+end

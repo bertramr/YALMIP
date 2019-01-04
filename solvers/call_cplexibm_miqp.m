@@ -2,21 +2,38 @@ function output = call_cplexibm_miqp(interfacedata)
 
 % Author Johan Löfberg
 
-options = interfacedata.options;
-model = yalmip2cplex(interfacedata);
+%Turn on support for nonconvex QP if required and user hasn't touched this
+if interfacedata.ProblemClass.objective.quadratic.nonconvex
+    if isfield(interfacedata.options.cplex,'solutiontarget')
+        if ~interfacedata.options.cplex.solutiontarget          
+            interfacedata.options.cplex.solutiontarget = 3;
+        end
+    else
+        interfacedata.options.cplex.solutiontarget = 3;
+    end
+end
 
+options = interfacedata.options;
+[model,nonlinearremain] = yalmip2cplex(interfacedata);
+
+if nonlinearremain
+    error('Nonlinear monomials remain when calling CPLEX. If you are using OPTIMIZER, ensure your model really is solvable by CPLEX for fixed parameters. If you still think so, please report this and ask for a feature improvement.');
+end
 if interfacedata.options.savedebug
     save cplexdebug model
 end
 
-solvertime = clock;
+solvertime = tic;
 [x,fval,exitflag,output,lambda] = localSolverCall(model);
+solvertime = toc(solvertime);
 if output.cplexstatus == 4 | output.cplexstatus == 119
     % CPLEX reports infeasible OR unbounded
     % Remove objective and resolve
     model.H = model.H*0;
     model.f = model.f*0;
+    solvertime = tic;
     [x,fval,exitflag,output,lambda] = localSolverCall(model);
+    solvertime = toc(solvertime);
     switch output.cplexstatus
         case {1,101,102} % It was ok, hence it must have been unbounded
             output.cplexstatus = 2;
@@ -26,9 +43,12 @@ if output.cplexstatus == 4 | output.cplexstatus == 119
             output.cplexstatus = 4; % I give up
     end
 end
-if interfacedata.getsolvertime solvertime = etime(clock,solvertime);else solvertime = 0;end
 
 % Inconstency in early version of CPLEX
+dots = find(interfacedata.solver.subversion == '.');
+if length(dots)>1
+    interfacedata.solver.subversion(dots(2:end))=[];
+end
 if str2num(interfacedata.solver.subversion)>=12.3
     the_sign = 1;
 else
@@ -53,7 +73,7 @@ switch output.cplexstatus
         problem = 0;
     case {3,103,106}
         problem = 1; % Infeasible
-    case {2,20,21,118}
+    case {2,20,21,118,133}
         problem = 2; % Unbounded
     case {4,119}
         problem = 15;    
@@ -63,6 +83,8 @@ switch output.cplexstatus
         problem = 15;
     case {5,6,109,110}
         problem = 4; % Numerics
+    case 24
+        problem = 11;
     otherwise
         problem = -1;
 end
@@ -90,17 +112,9 @@ end
 if isempty(x)
     x = zeros(length(model.f),1);
 end
-% Standard interface
-output.Primal      = x;
-output.Dual        = D_struc;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
 
-
+% Standard interface 
+output = createOutputStructure(x,D_struc,[],problem,infostr,solverinput,solveroutput,solvertime);
 
 function [x,fval,exitflag,output,lambda] = localSolverCall(model)
 
@@ -147,15 +161,15 @@ if isempty(integer_variables) & isempty(binary_variables) & isempty(semicont_var
 else
     if options.verbose 
         if isempty(H)
-            [x,fval,exitflag,output] = cplexmilp(f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype',x0,options.cplex);
+            [x,fval,exitflag,output] = cplexmilp(f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype,x0,options.cplex);
         else
-            [x,fval,exitflag,output] = cplexmiqp(H,f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype',x0,options.cplex);
+            [x,fval,exitflag,output] = cplexmiqp(H,f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype,x0,options.cplex);
         end
     else
         if isempty(H)
-            evalc('[x,fval,exitflag,output] = cplexmilp(f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype'',x0,options.cplex);');            
+            evalc('[x,fval,exitflag,output] = cplexmilp(f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype,x0,options.cplex);');            
         else
-            evalc('[x,fval,exitflag,output] = cplexmiqp(H,f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype'',x0,options.cplex);');
+            evalc('[x,fval,exitflag,output] = cplexmiqp(H,f,Aineq,bineq,Aeq,beq,K.sos.type,K.sos.variables,K.sos.weight,lb,ub,ctype,x0,options.cplex);');
         end
     end
     lambda = [];

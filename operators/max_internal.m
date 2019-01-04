@@ -24,13 +24,25 @@ switch method
         if length(inf_row)>0
             X(inf_row) = [];
         end
-        F = set(t - X);
+        F = t-X>= 0;
         arguments = X(:);
-        properties = struct('convexity','convex','monotonicity','increasing','definiteness','none');
+        any_constant = find(~any(basis(:,2:end),2));
+        if ~isempty(any_constant)
+            k = basis(any_constant,1);
+            if any(k>=0)
+                % This is something like max(x,0), so it is guaranteed to be
+                % non-negative
+                properties = struct('convexity','convex','monotonicity','increasing','definiteness','positive');
+            else
+                properties = struct('convexity','convex','monotonicity','increasing','definiteness','none');
+            end
+        else
+            properties = struct('convexity','convex','monotonicity','increasing','definiteness','none');
+        end
         
     case 'exact'
         arguments = [];
-        F = set([]);
+        F = ([]);
         t = extstruct.var;
         X = extstruct.arg{1};
         basis = getbase(X);
@@ -40,7 +52,7 @@ switch method
         end
         X = reshape(X,length(X),1);
         if prod(size(X)) == 1
-            F = F + set(X == t);
+            F = F + (X == t);
         elseif (prod(size(X)) == 2) & ((nnz(basis(1,:))==0) | (nnz(basis(2,:))==0))
             % Special case to test a particular problem max(0,y), so we
             % keep it since it is optimized
@@ -48,10 +60,10 @@ switch method
                 X = [0 1;1 0]*X;
             end
             [M,m] = derivebounds(X);
-            d = binvar(1,1);
-            F = F + set(m(1) <= t      <= m(1) + (M(2)-m(1))*d);
-            F = F + set(0    <= t-X(2) <= (m(1)-m(2))*(1-d));
-        elseif all(ismember(getvariables(X),yalmip('binvariables'))) & (is(X,'lpcone') | is(X,'sdpcone'))
+            d = binvar(1,1);         
+            F = [F, 0 <= t <= M(2)*d, X(2)<=M(2)*d];
+            F = [F, -(1-d)*M(2) <= t-X(2) <= (-m(2))*(1-d),X(2)>=m(2)*(1-d)];
+         elseif all(ismember(getvariables(X),yalmip('binvariables'))) & (is(X,'lpcone') | is(X,'sdpcone'))
             % Special case max(x) where x is simple binary
             F = [F, X <= t, sum(X) >= t];
         else

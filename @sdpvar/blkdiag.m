@@ -1,21 +1,10 @@
 function y = blkdiag(varargin)
 %BLKDIAG (overloaded)
 
-% Author Johan Löfberg
-% $Id: blkdiag.m,v 1.13 2010-01-13 13:49:20 joloef Exp $
-
 if nargin<2
     y=varargin{1};
     return
 end
-
-keep = ones(1,length(varargin));
-for i = 1:length(varargin)
-    if isempty(varargin{i})
-        keep(i) = 0;
-    end
-end
-varargin = {varargin{find(keep)}};
 
 % Get dimensions
 n = zeros(length(varargin),1);
@@ -56,7 +45,12 @@ ss = [];
 for j = 1:length(varargin)
     nnindex = indextable(1+nsums(j):nsums(j+1),1+msums(j):msums(j+1));
     if isasdpvar(j)
-        this_uses = find(ismembc(all_lmi_variables,varargin{j}.lmi_variables));
+        try
+            this_uses = find(ismembc(all_lmi_variables,varargin{j}.lmi_variables));
+        catch
+            % Octave fix...
+            this_uses = find(ismembc(all_lmi_variables,varargin{j}.lmi_variables));
+        end
         mindex = [1 this_uses+1];
 
         [a,b,d] = find(varargin{j}.basis.');
@@ -91,7 +85,7 @@ for i = 1:length(varargin)
             y.leftfactors{end+1} = [zeros(sum(n(1:1:i-1)),size(varargin{i}.leftfactors{j},2)); varargin{i}.leftfactors{j}; zeros(sum(n(i+1:1:end)),size(varargin{i}.leftfactors{j},2))];
             y.midfactors{end+1} = varargin{i}.midfactors{j};
         end
-    elseif isa(varargin{i},'double')       
+    elseif isnumeric(varargin{i})
         here = length(y.midfactors)+1;
         y.rightfactors{here} = [zeros(m(i),sum(m(1:1:i-1))) eye(m(i)) zeros(m(i),sum(m(i+1:1:end)))];
         y.leftfactors{here} = [zeros(sum(n(1:1:i-1)),size(varargin{i},1)); eye(size(varargin{i},1)); zeros(sum(n(i+1:1:end)),size(varargin{i},1))];

@@ -43,7 +43,9 @@ if ~isempty(semicont_variables)
 end
 
 n_original = length(c);
-[F_struc,K,c,Q,UB,LB,x0] = append_normalized_socp(F_struc,K,c,Q,UB,LB,x0);
+if any(K.q)
+    [F_struc,K,c,Q,UB,LB,x0] = append_normalized_socp(F_struc,K,c,Q,UB,LB,x0);
+end
 
 if size(F_struc,1)>0
     B = full(F_struc(:,1));         % Must be full  
@@ -110,14 +112,18 @@ model.lb = LB;
 model.ub = UB;
 model.objcon = full(interfacedata.f);
 model.vtype = VARTYPE;
-model.Q = Q;
+model.Q = sparse(Q);
 
 if ~isequal(K.q,0)
     top = n_original + 1;
     for i = 1:length(K.q)
-        model.cones(i).index = [top top+(1:K.q(i)-1)];
-        top = top + K.q(i);
-    end 
+        n = K.q(i);      
+        Qi = sparse(top:top+n-1,top:top+n-1,[-1 repmat(1,1,n-1)],length(c),length(c));
+        model.quadcon(i).Qc=Qi;       
+        model.quadcon(i).q=zeros(length(c),1);
+        model.quadcon(i).rhs=0;
+        top = top + n;
+    end
 end
 
 model.params = interfacedata.options.gurobi;

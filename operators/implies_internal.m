@@ -11,10 +11,10 @@ end
 
 % Normalize
 if isa(X,'constraint')
-    X = set(X,[],[],1);
+    X = lmi(X,[],[],1);
 end
 if isa(Y,'constraint')
-    Y = set(Y,[],[],1);
+    Y = lmi(Y,[],[],1);
 end
 
 % % Special case something implies binary == 1
@@ -26,7 +26,7 @@ end
 % end
 
 if isa(X,'sdpvar') & isa(Y,'sdpvar')
-    varargout{1} = set(Y >= X);
+    varargout{1} = (Y >= X);
 elseif isa(X,'sdpvar') & isa(Y,'lmi')
     varargout{1} = binary_implies_constraint(X,Y);
 elseif isa(X,'lmi') & isa(Y,'sdpvar')
@@ -66,8 +66,8 @@ switch settype(Y)
         if infbound
             warning('You have unbounded variables in IMPLIES leading to a lousy big-M relaxation.');
         end
-        F = binary_implies_linearnegativeconstraint(Y,X(:),M,m);
-        F = [F, binary_implies_linearnegativeconstraint(-Y,X(:),-m,-M)];
+        F = binary_implies_linearequality(Y,reshape(X,[],1),M,m);
+        % F = [F, binary_implies_linearnegativeconstraint(-Y,reshape(X,[],1),-m,-M)];
         
     case 'sdp'         % X --> (Y>=0)
         if length(X)>1
@@ -120,13 +120,12 @@ switch settype(X)
         end
         
     case 'equality'
-        X = sdpvar(X);
+        X = sdpvar(X);X = reshape(X,[],1);
         n = length(X);
-        if isequal(getbase(X),[-ones(n,1) eye(n)]) | isequal(getbase(X),[ones(n,1) -eye(n)]) & all(ismember(depends(X),yalmip('binvariables')));
+        if 0 % isequal(getbase(X),[-ones(n,1) eye(n)]) | isequal(getbase(X),[ones(n,1) -eye(n)]) & all(ismember(depends(X),yalmip('binvariables')));
             % Smart code for X == 1 implies Y
             F = [Y(:) >= recover(getvariables(X))];
-        else
-            %zero_tolerance = 1e-4;
+        else           
             d = binvar(length(X),2,'full');
             %F = linearnegativeconstraint_implies_binary([-zero_tolerance-X;X-zero_tolerance],[d(:,1);d(:,2)],[],[],zero_tolerance);
             F = linearnegativeconstraint_implies_binary([-zero_tolerance-X;X-zero_tolerance],[d(:,1);d(:,2)],[],[],zero_tolerance/100);

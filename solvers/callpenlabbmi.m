@@ -13,9 +13,9 @@ lb      = model.lb;
 
 % Bounded variables converted to constraints
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
-bmimodel.penstruct = sedumi2penbmi(F_struc,c,2*Q,K,monomtable,options,x0);
+bmimodel.penstruct = sedumi2penbmi(F_struc,full(c),2*Q,K,monomtable,options,x0);
 penlabmodel=yalmip2bmi(bmimodel);
 penlabmodel = bmi_define(penlabmodel);
 prob = penlab(penlabmodel);
@@ -27,9 +27,11 @@ switch options.verbose
 end
 prob.opts = options.penlab;
 showprogress('Calling PENLAB',model.options.showprogress);
-solvertime = clock;
+
+solvertime = tic;
 solve(prob);
-solvertime = etime(clock,solvertime);
+solvertime = toc(solvertime);
+
 xout = prob.x;
 x = zeros(length(model.c),1);
 if ~isempty(xout)

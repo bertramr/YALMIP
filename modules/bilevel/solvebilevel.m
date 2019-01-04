@@ -1,10 +1,10 @@
 function [sol,info] = solvebilevel(OuterConstraints,OuterObjective,InnerConstraints,InnerObjective,InnerVariables,options)
 %SOLVEBILEVEL Simple global bilevel solver
 %
-%   min        CO(x,y)
-%   subject to OO(x,y)>0
+%   min        OO(x,y)
+%   subject to CO(x,y)>=0
 %              y = arg min OI(x,y)
-%              subject to CI(x,y)>0
+%              subject to CI(x,y)>=0
 %
 %   [DIAGNOSTIC,INFO] = SOLVEBILEVEL(CO, OO, CI, OI, y, options)
 %
@@ -12,8 +12,8 @@ function [sol,info] = solvebilevel(OuterConstraints,OuterObjective,InnerConstrai
 %   info       : Bilevel solver specific information
 %
 %   Input
-%      CI       : Outer constraints (linear elementwise)
-%      OI       : Outer objective (convex quadratic)
+%      CO       : Outer constraints (linear elementwise)
+%      OO       : Outer objective (convex quadratic)
 %      CI       : Inner constraints (linear elementwise)
 %      OI       : Inner objective (convex quadratic)
 %      y        : Inner variables
@@ -33,9 +33,6 @@ function [sol,info] = solvebilevel(OuterConstraints,OuterObjective,InnerConstrai
 %
 %   See also SDPVAR, SDPSETTINGS, SOLVESDP
 
-% Author Johan Löfberg
-% $Id: solvebilevel.m,v 1.15 2010-04-27 14:25:05 joloef Exp $
-
 % min f(x,y) s.t g(x,y)<0, y = argmin  [x;y]'*H*[x;y]+e'[x;y]+f, E[x;y]<d
 
 if nargin<6
@@ -46,6 +43,12 @@ end
 
 y = InnerVariables;
 
+if ~isempty(InnerConstraints)
+    if any(is(InnerConstraints,'sos2'))
+        error('SOS2 structures not allowed in inner problem');
+    end
+end
+
 % User wants to use fmincon, cplex or something like
 if strcmp(options.bilevel.algorithm,'external')
     % Derive KKT conditions of inner problem, append with outer, and solve
@@ -54,7 +57,8 @@ if strcmp(options.bilevel.algorithm,'external')
     z = setdiff(z,depends(y));
     z = recover(unique(z));
     [K,details] = kkt(InnerConstraints,InnerObjective,z,options);    
-    Constraints = [K,OuterConstraints];    
+    Constraints = [K,OuterConstraints];   
+    options.solver = options.bilevel.outersolver;
     sol = solvesdp(Constraints,OuterObjective,options);
     info = [];
     return
@@ -62,7 +66,7 @@ end
 
 % Export the inner model, and select solver
 options.solver = options.bilevel.innersolver;
-if is(InnerObjective,'linear')
+if isa(InnerObjective, 'double') || is(InnerObjective,'linear')
     [Imodel,Iax1,Iax2,inner_p] = export(InnerConstraints,InnerObjective,options,[],[],0);
 elseif is(InnerObjective,'quadratic')
     % We have to be a bit careful about cases such as x'y. This is convex in
@@ -98,6 +102,7 @@ y = recover(unique([v1(:);v2(:);v3(:)]));
 
 % Export the outer model, and select solver
 options.solver = options.bilevel.outersolver;
+options.bmibnb.diagonalize = 0;
 [Omodel,Oax1,Oax2,outer_p] = export(OuterConstraints,OuterObjective,options,[],[],0);
 if isstruct(Oax2)
    sol = Oax2;
@@ -169,13 +174,13 @@ for i = 1:length(semi_variables)
     semi_var(i) = find(all_variables == semi_variables(i));
 end
 
-if ~isempty(intersect(y_var,binary_variables))
+if ~isempty(intersect(y_var,bin_var))
    error('Only LPs or convex QPs allowed as inner problem (inner variables can not be binary)');
 end
-if ~isempty(intersect(y_var,integer_variables))
+if ~isempty(intersect(y_var,int_var))
    error('Only LPs or convex QPs allowed as inner problem (inner variables can not be integer)');
 end
-if ~isempty(intersect(y_var,semi_variables))
+if ~isempty(intersect(y_var,semi_var))
    error('Only LPs or convex QPs allowed as inner problem (inner variables can not be semi-continuous)');
 end
 inner_p.binary_variables = bin_var;

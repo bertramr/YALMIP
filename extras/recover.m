@@ -1,13 +1,10 @@
 function varargout = recover(lmi_variables)
 %RECOVER Create SDPVAR object using variable indicies
 
-% Author Johan Löfberg
-% $Id: recover.m,v 1.10 2009-10-13 10:52:39 joloef Exp $
-
 if isempty(lmi_variables)
     varargout{1} = [];
 else
-    if isa(lmi_variables,'sdpvar') | isa(lmi_variables,'lmi') | isa(lmi_variables,'constraint')
+    if isa(lmi_variables,'sdpvar') || isa(lmi_variables,'lmi') || isa(lmi_variables,'constraint')
         varargout{1} = flush(recover(depends(lmi_variables)));
     else
         n = length(lmi_variables);

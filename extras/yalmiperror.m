@@ -6,11 +6,16 @@ function error_string = yalmiperror(errorcode,solver)
 %
 %   The complete set of error codes are
 %
+%   -12 Solver license cannot be located
+%   -11 Solver license expired
+%   -10 NaN in model data
+%    -9 Specified solver name not recognized
+%    -8 Problem does not satisfy geometric programming rules
 %    -7 Solver does not return error codes
 %    -6 Search space not bounded (bound all variables)
 %    -5 License problems in solver
 %    -4 Solver not applicable
-%    -3 Solver not found
+%    -3 Solver not found in MATLAB path
 %    -2 Successfully solved
 %    -1 Unknown error
 %     0 Successfully solved
@@ -24,17 +29,21 @@ function error_string = yalmiperror(errorcode,solver)
 %     8 Feasibility cannot be determined
 %     9 Unknown problem in solver
 %    10 bigM failed (obsolete)  
-%    11 Other identified error
+%    11 Other identified error (use savesolveroutput and refer to solver
+%    documentation)
 %    12 Infeasible or unbounded
 %    13 YALMIP cannot determine status in solver
-%    14 Convexity check failed.
+%    14 Model creation failed
 %    15 Problem either infeasible or unbounded
 %    16 User terminated
+%    17 Presolve recovery failed
+%    18 Missing non-negativity bounds in GP formulation
+%    19 Convexity requirements not met
+%    20 Solver complains about bad data
+%    21 Failed to initialize bisection space (typically means infeasibility)
+%    22 Ill-posed problem according to solver
 %
-%   See also SOLVESDP
-
-% Author Johan Löfberg 
-% $Id: yalmiperror.m,v 1.8 2007-10-03 09:25:56 joloef Exp $
+%   See also OPTIMIZE
 
 if nargin ==0
     help yalmiperror
@@ -44,10 +53,20 @@ end
 if nargin==1
     solver = '';
 else
-    solver = ['(' solver ')'];
+    solver = ['(' strrep(solver,'+','') ')'];
 end
 
 switch errorcode
+case -12
+  error_string = ['Solver license cannot be located ' solver];          
+case -11 
+  error_string = ['Solver license expired ' solver];          
+case -10
+  error_string = ['NaN in model data ' solver];          
+case -9
+  error_string = ['Specified solver name not recognized ' solver];          
+case -8
+  error_string = ['Problem does not satisfy geometric programming rules'];      
 case -7
   error_string = ['Solver does not return error codes ' solver];
 case -6
@@ -61,7 +80,7 @@ case -3
  case -2
   error_string = 'No suitable solver';
  case -1
-  error_string = 'Unknown error';
+  error_string = ['Unknown error ' solver];
  case 0
   error_string = ['Successfully solved ' solver ];
  case 1
@@ -81,7 +100,7 @@ case -3
  case 8
   error_string = ['Feasibility cannot be determined ' solver ];	
  case 9
-  error_string = ['Unknown problem in solver (try using ''debug''-flag in sdpsettings) ' solver ];
+  error_string = ['Unknown problem in solver (Turn on ''debug'' in sdpsettings) ' solver ];
  case 10
   error_string = ['bigM failed, increase sp.Mfactor ' solver ];
  case 11
@@ -91,12 +110,24 @@ case -3
  case 13
   error_string = ['YALMIP cannot determine status in solver ' solver ]; 
  case 14
-  error_string = ['Convexity check failed ' solver ]; 
+  error_string = ['Model creation failed ' solver ]; 
  case 15
   error_string = ['Infeasible or unbounded problem ' solver ]; 
  case 16
-  error_string = ['User terminated ' solver ];         
-  
+  error_string = ['User terminated ' solver ]; 
+ case 17
+  error_string = ['Presolve recovery failed ' solver ]; 
+ case 18
+  error_string = ['Missing non-negativity bounds in GP formulation ' solver ];         
+ case 19
+  error_string = ['Convexity requirements not met ' solver ];           
+case 20
+  error_string = ['Solver complains about bad data ' solver ];
+case 21
+  error_string = ['Failed to initialize bisection space (probably infeasible)' solver ];              
+case 22
+  error_string = ['Ill-posed problem according to solver ' solver ];              
+    
  otherwise
 end
 

@@ -5,12 +5,9 @@ function sys = unblkdiag(F)
 %
 % See also DISSECT
 
-% Author Johan Löfberg
-% $Id: unblkdiag.m,v 1.4 2006-01-17 15:49:08 joloef Exp $
-
 switch class(F)
     case 'lmi'
-        sys = set([]);
+        sys = ([]);
         for i = 1:length(F)
             if is(F(i),'sdp') % SDP
                 Z = sdpvar(F(i));
@@ -22,14 +19,14 @@ switch class(F)
                         r1 = r(blocks);
                         r2 = r(blocks+1)-1;
                         if r2>r1
-                            sys = sys + set(Z(v(r1:r2),v(r1:r2)));
+                            sys = sys + (Z(v(r1:r2),v(r1:r2))>=0);
                         else
                             linearblocks = [linearblocks v(r1)];
                         end
                     end
                     if ~isempty(linearblocks)
                         D=diag(Z);
-                        sys = sys+set(D(linearblocks));
+                        sys = sys+(D(linearblocks)>=0);
                     end
                 else
                     sys = sys + F(i);

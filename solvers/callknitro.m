@@ -12,8 +12,22 @@ end
 % Standard NONLINEAR setup
 model = yalmip2nonlinearsolver(model);
 
-model.options.knitro.GradObj = 'on';
-model.options.knitro.GradConstr = 'on';
+% Figure out which variables are artificially introduced to normalize
+% arguments in callback operators to simplify chain rules etc. We can do
+% our function evaluations and gradient computations in our lifted world,
+% but only expose the model in the original variables to the nonlinear
+% solver. 
+if isempty(C) % Only do this if we don't have complementarity. FIXME
+%    model = compressLifted(model);
+end
+
+if model.derivative_available
+    model.options.knitro.GradObj = 'on';
+    model.options.knitro.GradConstr = 'on';
+else
+    model.options.knitro.GradObj = 'off';
+    model.options.knitro.GradConstr = 'off';
+end
 model.options.knitro.JacobPattern = jacobiansparsityfromnonlinear(model,0);
 
 % If quadratic objective and no nonlinear constraints, we can supply an
@@ -38,8 +52,8 @@ showprogress('Calling KNITRO',model.options.showprogress);
 
 % FMINCON callbacks can be used, except that we must ensure the model is
 % sent to the callbacks also (KNITRO only sends x)
-funcs.objective = @(x)fmincon_fun(x,model);
-funcs.constraints = @(x)fmincon_con(x,model);
+funcs.objective = @(x)fmincon_fun_liftlayer(x,model);
+funcs.constraints = @(x)fmincon_con_liftlayer(x,model);
 
 switch model.options.verbose
     case 0
@@ -72,13 +86,20 @@ model.objFnType = [];
 model.xType = zeros(length(model.lb),1);
 model.xType(model.binary_variables) = 2;
 model.xType(model.integer_variables) = 1;
-model.cineqFnType = repmat(2,length(model.bnonlinineq),1);
+model.cineqFnType = repmat(2,length(model.bnonlinineq)+nnz(model.K.q),1);
 
-solvertime = clock;
-[x,fval,exitflag,output,lambda] = knitromatlab_mip(funcs.objective,model.x0,model.A,full(model.b),model.Aeq,full(model.beq),model.lb,model.ub,funcs.constraints,model.xType,model.objFnType,model.cineqFnType,model.extendedFeatures,model.options.knitro,model.options.knitro.optionsfile);
-solvertime = etime(clock,solvertime);
+solvertime = tic;
+[xout,fval,exitflag,output,lambda] = knitromatlab_mip(funcs.objective,model.x0,model.A,full(model.b),model.Aeq,full(model.beq),model.lb,model.ub,funcs.constraints,model.xType,model.objFnType,model.cineqFnType,model.extendedFeatures,model.options.knitro,model.options.knitro.optionsfile);
+solvertime = toc(solvertime);
 
-x = RecoverNonlinearSolverSolution(model,x);
+if ~isempty(xout) && ~isempty(model.lift);
+    x = zeros(length(model.linearindicies),1);
+    x(model.lift.linearIndex) = xout(:);
+    x(model.lift.liftedIndex) = model.lift.T*xout(:) + model.lift.d;
+    x = RecoverNonlinearSolverSolution(model,x);
+else
+    x = RecoverNonlinearSolverSolution(model,xout);
+end
 
 % Internal format for duals
 D_struc = [];
@@ -109,7 +130,7 @@ end
 % Save all data from the solver?
 if model.options.savesolveroutput
     solveroutput.x = x;
-    solveroutput.fmin = fmin;
+    solveroutput.fval = fval;
     solveroutput.exitflag = exitflag;
     solveroutput.output=output;
     solveroutput.lambda=lambda;

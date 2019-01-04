@@ -1,8 +1,5 @@
 function output = callsedumi(model)
 
-% Author Johan Löfberg 
-% $Id: callsedumi.m,v 1.30 2008-06-09 06:29:48 joloef Exp $
-
 % Retrieve needed data
 options = model.options;
 F_struc = model.F_struc;
@@ -20,7 +17,7 @@ pars.fid = double(options.verbose);
 % N.B. Only happens when caller is BNB
 % *********************************************
 if ~isempty(ub)
-    [F_struc,K] = addbounds(F_struc,K,ub,lb);
+    [F_struc,K] = addStructureBounds(F_struc,K,ub,lb);
 end
 
 % Avoid bug (by design?) in SeDuMi on 1D second order cones
@@ -37,9 +34,9 @@ end
 % *********************************************
 if options.showprogress;showprogress(['Calling ' model.solver.tag],options.showprogress);end
 
-solvertime = clock; 
 problem = 0;  
 warnState = warning;
+solvertime = tic;
 try
     [x_s,y_s,info] = sedumi(-F_struc(:,2:end),-c,F_struc(:,1),K,pars);
 catch
@@ -55,7 +52,7 @@ catch
         end
         % Boring issue in sedumi for trivial problem min x+y, s.t x+y>0
         n = length(c);
-        [F_struc,K] = addbounds(F_struc,K,ones(n,1)*1e6,-ones(n,1)*1e6);
+        [F_struc,K] = addStructureBounds(F_struc,K,ones(n,1)*1e6,-ones(n,1)*1e6);
         [x_s,y_s,info] = sedumi(-F_struc(:,2:end),-c,F_struc(:,1),K,pars);
         x_s((1:2*n)+K.f)=[];
         K.l=K.l-2*n;
@@ -70,8 +67,8 @@ catch
     end
 end
 warning(warnState);
-% solvertime = cputime - solvertime;%etime(clock,solvertime
-if model.getsolvertime solvertime = etime(clock,solvertime);else solvertime = 0;end
+solvertime = toc(solvertime);
+
 
 
 % Internal format
@@ -145,14 +142,8 @@ else
 end
 
 % Standard interface 
-output.Primal      = Primal;
-output.Dual        = Dual;
-output.Slack       = [];
-output.problem     = problem;
-output.infostr     = infostr;
-output.solverinput = solverinput;
-output.solveroutput= solveroutput;
-output.solvertime  = solvertime;
+output = createOutputStructure(Primal,Dual,[],problem,infostr,solverinput,solveroutput,solvertime);
+
  
 function [new_F_struc,K] = fix1Dqcone(F_struc,K); 
 

@@ -12,7 +12,7 @@ function varargout = geomean(varargin)
 % or to add lower bound constraints on the determinant.
 %
 % When GEOMEAN is used in a problem, the domain constraint
-% set(X>0) is automatically added to the problem.
+% X>=0 is automatically added to the problem.
 %
 % If you only use GEOMEAN as the objective function, you
 % may want to consider GEOMEAN2 which may results in a
@@ -20,12 +20,15 @@ function varargout = geomean(varargin)
 %
 % See also SDPVAR, GEOMEAN2, SUMK, SUMABSK
 
-% Author Johan Löfberg
-% $Id: geomean.m,v 1.18 2007-08-02 19:17:36 joloef Exp $
-
 switch class(varargin{1})
 
     case 'sdpvar' % Overloaded operator for SDPVAR objects. Pass on args and save them.
+        
+        if nargin == 2 && isequal(varargin{2},2)
+            varargout{1} = geomean(varargin{1}')';
+            return
+        end
+        
         X = varargin{1};
         [n,m] = size(X);
         if is(varargin{1},'hermitian') | min(n,m)==1
@@ -50,7 +53,7 @@ switch class(varargin{1})
             n = length(X);
             m=2^ceil(log2(n));
             X0=X;
-            F = set([]);
+            F = ([]);
             if n ~= m
                 d=m-n;
                 if size(X,1)==size(X,2)
@@ -66,7 +69,7 @@ switch class(varargin{1})
 
                     D = tril(sdpvar(n,n));
                     delta = diag(D);
-                    F = set([X D;D' diag(delta)] >= 0);
+                    F = ([X D;D' diag(delta)] >= 0);
                     p = 2^ceil(log2(n));
                     if 1
                         x = [delta;ones(d,1)*t];
@@ -96,7 +99,7 @@ switch class(varargin{1})
 
                     D = tril(sdpvar(n,n));
                     delta = diag(D);
-                    F = set([X D;D' diag(delta)] >= 0);
+                    F = ([X D;D' diag(delta)] >= 0);
                     p = 2^ceil(log2(n));
                     x = delta;
 

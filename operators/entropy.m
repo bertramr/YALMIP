@@ -3,16 +3,14 @@ function varargout = entropy(varargin)
 %
 % y = ENTROPY(x)
 %
-% Computes/declares entropy -sum(x.*log(x))
+% Computes/declares concave entropy -sum(x.*log(x))
 %
 % Implemented as evalutation based nonlinear operator. Hence, the concavity
 % of this function is exploited to perform convexity analysis and rigorous
 % modelling.
 %
-% See also crossentropy.
+% See also CROSSENTROPY, KULLBACKLEIBLER.
 
-% Author Johan Löfberg
-% $Id: entropy.m,v 1.11 2007-08-02 20:57:53 joloef Exp $
 switch class(varargin{1})
 
     case 'double'
@@ -29,34 +27,33 @@ switch class(varargin{1})
             varargout{1} = -sum(x.*log(x));
         end
 
-    case 'sdpvar'
-
-        if min(size(varargin{1}))>1
-            error('ENTROPY only defined for vector arguments');
-        else
-            varargout{1} = yalmip('define',mfilename,varargin{1});
-        end
+    case {'sdpvar','ndsdpvar'}
+ 
+        varargin{1} = reshape(varargin{1},[],1);
+        varargout{1} = yalmip('define',mfilename,varargin{1});        
 
     case 'char'
 
         X = varargin{3};
-        F = set(X >= 0);
+        F = (X >= 0);
 
         operator = struct('convexity','concave','monotonicity','none','definiteness','none','model','callback');
         operator.range = [-inf exp(-1)*length(X)];
         operator.domain = [0 inf];
         operator.bounds = @bounds;
         operator.convexhull = @convexhull;
-        operator.derivative = @(x) (-1-log(x));
-
+        operator.derivative = @derivative;
         varargout{1} = F;
         varargout{2} = operator;
         varargout{3} = X;
 
     otherwise
-        error('SDPVAR/LOG called with CHAR argument?');
+        error('SDPVAR/ENTROPY called with CHAR argument?');
 end
 
+function df = derivative(x)
+x(x<=0)=eps;
+df = (-1-log(x));
 
 function [L, U] = bounds(xL,xU)
 
@@ -74,20 +71,39 @@ U = sum(U);
 
 
 function [Ax, Ay, b] = convexhull(xL,xU)
-Ax = [];
-Ay = [];
-b = [];
-% % Loop thorough all variables, and compute a convex hull each term xlogx
-% Hmm, how do I merge without expensive projection
-% for i = 1:length(xL)
-%     if xL(i) <= 0
-%         fL = inf;
-%         dfL = -inf;
-%     else
-%         fL = -xL(i).*log(xL(i));
-%         dfL = -log(xL(i)) - 1;
-%     end
-%     fU = -xU(i).*log(xU(i));
-%     dfU = -log(xU(i)) - 1;
-%     [Ax,Ay,b] = convexhullConcave(xL(i),xU(i),fL,fU,dfL,dfU);
-% end
+
+if length(xL)==1
+    xM = (xU+xL)/2;
+    f1 = entropy(xL);
+    f2 = entropy(xM);
+    f3 = entropy(xU);        
+    df1 = derivative(xL);
+    df2 = derivative(xM);
+    df3 = derivative(xU);
+    [Ax,Ay,b] = convexhullConcave(xL,xM,xU,f1,f2,f3,df1,df2,df3);
+
+elseif length(xL)==2
+    x1 = [xL(1);xL(2)];
+    x2 = [xU(1);xL(2)];
+    x3 = [xL(1);xU(2)];
+    x4 = [xU(1);xU(2)];
+    x5 = (xL+xU)/2;
+    
+    f1 = entropy(x1);
+    f2 = entropy(x2);
+    f3 = entropy(x3);
+    f4 = entropy(x4);
+    f5 = entropy(x5);
+    
+    df1 = derivative(x1);
+    df2 = derivative(x2);
+    df3 = derivative(x3);
+    df4 = derivative(x4);
+    df5 = derivative(x5);
+    
+    [Ax,Ay,b] = convexhullConcave2D(x1,f1,df1,x2,f2,df2,x3,f3,df3,x4,f4,df4,x5,f5,df5);
+else
+    Ax = [];
+    Ay = [];
+    b = [];
+end

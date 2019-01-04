@@ -78,16 +78,22 @@ if  ~alreadydone(getvariables(variable),method,goal_vexity)
             failure = 0;
             method = 'exact';
         else
-            if failure & options.allowmilp
-               % [properties,F_graph,arguments] = model(variable,'exact',options,[],w); 
-                [properties,F_graph,arguments] = model(variable,'exact',options,allExtStruct(ext_index),w); 
+            if failure & options.allowmilp               
+                [properties,F_graph,arguments,fcn] = model(variable,'exact',options,allExtStruct(ext_index),w); 
                                
                 if ~isempty(properties)
                     properties = properties{1};
                 end
    
                 if isempty(F_graph)
-                    cause = [cause ', exact model not available.'];
+                    switch fcn
+                        case 'sqrt'
+                            cause = [cause 'See https://yalmip.github.io/squareroots/'];
+                        case 'norm'
+                            cause = [cause 'Only 1- and inf-norms can be used in a nonconvex fashion'];
+                        otherwise
+                            cause = [cause 'The function ' fcn ' does not have an implementation when entering in a ' goal_vexity ' fashion '];
+                    end
                     return
                 else
                     failure = 0;                   
@@ -116,18 +122,20 @@ if  ~alreadydone(getvariables(variable),method,goal_vexity)
    end
    end
 
-    % Now we might have to recurse
-    if isa(arguments,'sdpvar')
-        if max(size(arguments))>1
-            arguments = reshape(arguments,prod(size(arguments)),1);
-        else
-            try
-            %arguments = recover(depends(arguments)) ;     
-            arguments = recover(getvariables(arguments)); 
-            catch
-            end
-        end
-    end
+   % Now we might have to recurse
+   if isa(arguments,'sdpvar')
+       if max(size(arguments))>1
+           arguments = reshape(arguments,prod(size(arguments)),1);
+       else
+           try
+               if length(getvariables(arguments)) == 1 && isequal(getbase(arguments),[0 1])
+               else
+                   arguments = recover(getvariables(arguments));
+               end
+           catch
+           end
+       end
+   end
 
     [ix,jx,kx] = find(monomtable(getvariables(variable),:));
     if ~isempty(jx) % Bug in 6.1
@@ -158,14 +166,22 @@ if  ~alreadydone(getvariables(variable),method,goal_vexity)
     % Ok, here goes the actual recursive code
     while j<=length(arguments) & ~failure
 
-        if do_not_check_nonlinearity            
-            usedvariables = find(fullbasis_transpose(:,j));
-            expressionvariables = allvariables(usedvariables);
+        if length(extendedvariables)==1
+            % Optiize for the special case that the whole model only
+            % contains 1 single nonlinear operator. If that i the case, we
+            % do not need to do recursive stuff. This can save time in some
+            % etremely large simple model
+            expressionvariables = [];
         else
-            expression = arguments(j);
-            expressionvariables = unique([depends(expression) getvariables(expression)]);
+            if do_not_check_nonlinearity            
+                usedvariables = find(fullbasis_transpose(:,j));
+                expressionvariables = allvariables(usedvariables);
+            else
+                expression = arguments(j);
+                expressionvariables = unique([depends(expression) getvariables(expression)]);
+            end
         end
-        index_in_expression = find(ismembc(expressionvariables,extendedvariables));
+        index_in_expression = find(ismembcYALMIP(expressionvariables,extendedvariables));
 
         if ~isempty(index_in_expression)
             for i = index_in_expression
@@ -186,20 +202,6 @@ if  ~alreadydone(getvariables(variable),method,goal_vexity)
                     go_concave3 = (basis <= 0) &  isequal(goal_vexity,'concave') & isequal(properties.monotonicity,'decreasing');
                     go_concave4 = (basis > 0) &  isequal(goal_vexity,'concave') & isequal(properties.monotonicity,'increasing');
                     go_concave = (go_concave1 | go_concave2 | go_concave3 | go_concave4) & ~strcmpi(method,'integer');
-
-%                     % Experiment with abs(1+abs(x))
-%                     if ~(go_convex | go_concave)
-%                        if (basis > 0) &  isequal(goal_vexity,'convex')
-%                           if length(arguments(j))==1
-%                               [M,m]=derivebounds(arguments(j));
-%                               if m>=0
-%                                   % Hurrah! we have f(g(x)) where g(x) is
-%                                   % positive
-%                                   go_convex1 = 1;
-%                               end
-%                           end
-%                        end
-%                     end
                         
                     if go_convex
                         [F_expand,failure,cause] = expandrecursive(recover(expressionvariables(i)),F_expand,extendedvariables,monomtable,variabletype,where,level+1,options,method,[],'convex',allExtStruct,w);

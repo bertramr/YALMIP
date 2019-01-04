@@ -1,17 +1,16 @@
-function F = lt(X,Y)
+function F = le(X,Y)
 % Internal class for constraint lists
-
-% Author Johan Löfberg
-% $Id: le.m,v 1.2 2007-09-12 14:28:29 joloef Exp $
-
-superiorto('sdpvar');
-superiorto('double');
 
 % Try to evaluate
 try
     if isa(X,'constraint')
         % (z > w) < y
-        Z = Y - X.List{end};
+        try        
+            Z = Y - X.List{end};
+        catch
+            Y = reshape(Y,[],1);
+            Z = Y - X.List{end};
+        end
         F = X;
         F.List{end+1} = '<=';
         F.List{end+1} = Y;
@@ -20,7 +19,12 @@ try
         F.strict(end+1) = 0;
     else
         % x < (w > y)
-        Z = Y.List{1} - X;
+        try
+            Z = Y.List{1} - X;
+        catch
+            X = reshape(X,[],1);
+            Z = Y.List{1} - X;
+        end
         F = Y;
         F.List = {X,'<=',F.List{:}};
         F.Evaluated = {Z,F.Evaluated{:}};

@@ -1,9 +1,6 @@
 function [mDIM,nBLOCK,bLOCKsTRUCT,c,F] = sedumi2sdpa(F_struc,c,K);
 %SEDUMI2SDPA Internal function to convert SeDuMi structure to format needed in SDPA
 
-% Author Johan Löfberg
-% $Id: sedumi2sdpa.m,v 1.2 2004-07-02 08:17:32 johanl Exp $
-
 start = 1;
 
 % This is a hack. K.f is only available when called from bnb with dynamically added equalities
@@ -39,10 +36,11 @@ end
 % Semidefinite constraints
 if K.s>0
     for i = 1:length(K.s)
-         z = tril(ones(K.s(i)),-1);z = find(z(:));
+        z = tril(ones(K.s(i)),-1);z = find(z(:));
         theend = start+power(K.s(i),2)-1;
-        temp = sparse(F_struc(start:theend,:));
-        temp(z,:)=0;
+        temp = sparse(F_struc(start:theend,:))';
+        temp(:,z) = 0;
+        temp = temp';        
         %F{i+nl,1}=triu(sparse(-reshape(F_struc(start:theend,1),K.s(i),K.s(i))));
         F{i+nl,1}=((-reshape(temp(:,1),K.s(i),K.s(i))));
         FastZero = spalloc(K.s(i),K.s(i),0);

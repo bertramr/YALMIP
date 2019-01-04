@@ -1,19 +1,16 @@
 function output = callquadprog(interfacedata)
 
-% Author Johan Löfberg
-% $Id: callquadprog.m,v 1.17 2007-08-02 11:39:36 joloef Exp $
-
 options = interfacedata.options;
 model = yalmip2quadprog(interfacedata);
 
 if options.savedebug
-    save debugfile model
+    save quadprogdebug model
 end
 
 if options.showprogress;showprogress(['Calling ' interfacedata.solver.tag],options.showprogress);end
-solvertime = clock;
+solvertime = tic;
 solveroutput = callsolver(model,options);
-if interfacedata.getsolvertime solvertime = etime(clock,solvertime);else solvertime = 0;end
+solvertime = toc(solvertime);
 solution = quadprogsol2yalmipsol(solveroutput,model);
 
 % Save all data sent to solver?
@@ -27,22 +24,23 @@ if ~options.savesolveroutput
 end
 
 % Standard interface
-output.Primal      = solution.x(:);
-output.Dual        = solution.D_struc;
-output.Slack       = [];
-output.problem     = solution.problem;
-output.infostr     = yalmiperror(solution.problem,interfacedata.solver.tag);
-output.solvertime  = solvertime;
+Primal      = solution.x(:);
+Dual        = solution.D_struc;
+problem     = solution.problem;
+infostr     = yalmiperror(solution.problem,interfacedata.solver.tag);
 if ~options.savesolverinput
-    output.solverinput = [];
+    solverinput = [];
 else
-    output.solverinput = model;
+    solverinput = model;
 end
 if ~options.savesolveroutput
-    output.solveroutput = [];
+    solveroutput = [];
 else
-    output.solveroutput = solveroutput;
+    solveroutput = solveroutput;
 end
+% Standard interface 
+output = createOutputStructure(Primal,Dual,[],problem,infostr,solverinput,solveroutput,solvertime);
+
 
 function solveroutput = callsolver(model,options)
 x = [];
@@ -71,6 +69,9 @@ else
         [x,fmin,flag,output,lambda] = quadprog(model.Q, model.c, model.A, model.b, model.Aeq, model.beq, model.lb, model.ub, [],model.ops);
     end
 end
+if isempty(x)
+    x = nan(length(model.c),1);    
+end    
 solveroutput.x = x;
 solveroutput.fmin = fmin;
 solveroutput.flag = flag;

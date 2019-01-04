@@ -5,7 +5,11 @@ h = varargin{2};
 varargin{2} = sum(recover(depends(h)));
 
 if ~is(h,'linear')
-    error('Your objective is not a scalar (multiple solutions can currently only be obtained for linear objectives)');
+    error('Parts of your matrix objective is not linear (multiple solutions can currently only be obtained for linear objectives)');
+end
+
+if is(h,'complex')
+    error('Parts of your matrix objective is complex-valued (which makes no sense since complex numbers have no natural ordering');
 end
 
 if nargin<3
@@ -118,7 +122,7 @@ for i = 1:length(h)
         diagnostic.yalmipmodel = model;
     end
     
-    if ops.warning & warningon & isempty(findstr(output.infostr,'No problems detected'))
+    if ops.warning && warningon && isempty(findstr(output.infostr,'No problems detected'))
         disp(['Warning: ' output.infostr]);
     end
     

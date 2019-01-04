@@ -1,26 +1,16 @@
 function used = getvariables(F)
 
-used = recursivegetvariables(F,1,length(F.clauses));
-return
-
-m = length(F.clauses);
-if m == 1
-    used = getvariables(F.clauses{1}.data);
-else
-    if m>50
-        for i = 1:m
-            Fivars = getvariables(F.clauses{i}.data);
-            used = [used Fivars(:)'];
-        end
-        used = uniquestripped(used);
-    else
-        for i = 1:m
-            Fivars = getvariables(F.clauses{i}.data);
-            used = uniquestripped([used Fivars(:)']);
-        end
-    end
+F = flatten(F);
+if length(F.clauses) == 0
+    used = [];
+    return
 end
 
+if isa(F.clauses{1},'cell')
+    F = flatten(F);
+end
+
+used = recursivegetvariables(F,1,length(F.clauses));
 
 function used = recursivegetvariables(F,startindex,endindex)
 
@@ -34,9 +24,30 @@ if endindex-startindex>50
 else
     used = [];
     if startindex <= length(F.clauses)
-        used = getvariables(F.clauses{startindex}.data);
+        
+        if F.clauses{startindex}.type == 56
+            used = [];
+            for j = 1:length(F.clauses{startindex}.data)
+                used = [used getvariables(F.clauses{startindex}.data{j})];
+            end
+        else
+            used = getvariables(F.clauses{startindex}.data);
+        end
+        
         for i = startindex+1:endindex
-            Fivars = getvariables(F.clauses{i}.data);
+            
+            %Fivars = getvariables(F.clauses{i}.data);
+            if F.clauses{i}.type == 56
+                % Meta constraint such as implies. This object is just holding
+                % the data involved
+                Fivars = [];
+                for j = 1:length(F.clauses{i}.data)
+                    Fivars = [Fivars getvariables(F.clauses{i}.data{j})];
+                end
+            else
+                Fivars = getvariables(F.clauses{i}.data);
+            end
+                        
             if ~isequal(used,Fivars(:)')
                 used = [used Fivars(:)'];
             end
