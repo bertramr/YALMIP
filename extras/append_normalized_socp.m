@@ -1,15 +1,18 @@
 function [F_struc,K,c,Q,UB,LB,x0,Qi,Li,ri] = append_normalized_socp(F_struc,K,c,Q,UB,LB,x0)
 
 if K.q(1)>0
-    % We don't support initials here yet
-    nNew = sum(K.q);
+    % We don't support initials here yet. They are initialized with Nans to
+    % let initial aware solvers pick a the start.
     
     % To simplify code, we currently normalize everything to z'*z<z0^2
     % This done by writting [c^Tx+d;Ax+b] in cone as
     % [c^Tx+d;Ax+b]==[z0;z],  [z0;z] in cone
-    x0 = [x0; nan(nNew, 1)];
+    nNew = sum(K.q);
     nOriginal = length(c);
     Ftemp = F_struc(1+K.f+K.l:end,:);
+    if ~isempty(x0)
+        x0 = [x0;Ftemp*[1;x0]];
+    end
     F_strucSOCP = [Ftemp -speye(nNew)];
     F_struc = [F_struc(1:K.f+K.l,:) spalloc(K.f+K.l,nNew,0)];
     F_struc = [F_strucSOCP;F_struc];
