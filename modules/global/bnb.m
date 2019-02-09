@@ -1357,7 +1357,7 @@ function p = extractBounds(p)
 if ~isempty(p.F_struc)
     [lb,ub,used_rows_eq,used_rows_lp] = findulb(p.F_struc,p.K);
     if ~isempty(used_rows_lp)
-        used_rows_lp = used_rows_lp(~any(full(p.F_struc(p.K.f + used_rows_lp,1+p.nonlinear)),2));
+        used_rows_lp = used_rows_lp(~any((p.F_struc(p.K.f + used_rows_lp,1+p.nonlinear)),2));
         if ~isempty(used_rows_lp)
             lower_defined = find(~isinf(lb));
             if ~isempty(lower_defined)
@@ -1445,13 +1445,15 @@ if any(good)
             keep(i) = 0;
         end
     end
-    groups = {groups{find(keep)}};
     if length(groups) > 0
-        for i = 1:length(groups)
-            for j = 1:length(groups{i}.variables);
-                v = groups{i}.variables{j};
-                v = v(v>1)-1;
-                groups{i}.variables{j} = v;
+        groups = {groups{find(keep)}};
+        if length(groups) > 0
+            for i = 1:length(groups)
+                for j = 1:length(groups{i}.variables);
+                    v = groups{i}.variables{j};
+                    v = v(v>1)-1;
+                    groups{i}.variables{j} = v;
+                end
             end
         end
     end
