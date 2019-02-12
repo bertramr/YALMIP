@@ -130,13 +130,15 @@ else
         case 'sigmonial'
             Fi = vertcat(F.clauses{:});
             monomtable = yalmip('monomtable');
-            
+            vars = arrayfun(@(x) getvariables(x.data), Fi, 'UniformOutput', false);
+            YESNO(:,1) = cellfun(@(x) privissigmonialfunc(monomtable, x), vars);
 %             for i = 1:length(F.clauses)
 %                 Fi = F.clauses{i};
 %                 monomtable = yalmip('monomtable');
 %                 monomtable = monomtable(getvariables(Fi.data),:);
 %                 YESNO(i,1) = any(find(any(0>monomtable,2) | any(monomtable-fix(monomtable),2)));
 %             end
+
         case 'binary'
             for i = 1:length(F.clauses)
                 Fi = F.clauses{i};
@@ -213,3 +215,9 @@ else
 end
 
 YESNO = full(YESNO);
+end
+
+function YESNO = privissigmonialfunc(monomtable, vars)
+monomtable = monomtable(vars, :);
+YESNO(1,1) = any(find(any(0>monomtable,2) | any(monomtable-fix(monomtable),2)));
+end
