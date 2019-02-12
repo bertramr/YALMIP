@@ -33,10 +33,12 @@ else
                 YESNO(i,1) = (Fi.type==3);
             end
         case {'element-wise','elementwise'}
-            for i = 1:length(F.clauses)
-                Fi = F.clauses{i};
-                YESNO(i,1) = (Fi.type==2);
-            end
+            Fi = [F.clauses{:}];
+            YESNO(:,1) = ([Fi.type] == 2);
+%             for i = 1:length(F.clauses)
+%                 Fi = F.clauses{i};
+%                 YESNO(i,1) = (Fi.type==2);
+%             end
         case {'socc','socp'}
             for i = 1:length(F.clauses)
                 Fi = F.clauses{i};
@@ -81,10 +83,12 @@ else
                 YESNO(i,1) = full((((Fi.type==1) | (Fi.type==9)) | ((Fi.type==2) & (prod(size(Fi.data))==1))) & (islinear(Fi.data)));
             end
         case 'linear'
-            for i = 1:length(F.clauses)
-                Fi = F.clauses{i};
-                YESNO(i,1) = islinear(Fi.data);
-            end
+            Fi = vertcat(F.clauses{:});
+            YESNO(:,1) = arrayfun(@(x) islinear(x.data), Fi);
+%             for i = 1:length(F.clauses)
+%                 Fi = F.clauses{i};
+%                 YESNO(i,1) = islinear(Fi.data);
+%             end
         case 'kyp'
             for i = 1:length(F.clauses)
                 Fi = F.clauses{i};
@@ -124,12 +128,15 @@ else
         case 'eig'
             YESNO(i,1) = (Fi.type==10);
         case 'sigmonial'
-            for i = 1:length(F.clauses)
-                Fi = F.clauses{i};
-                monomtable = yalmip('monomtable');
-                monomtable = monomtable(getvariables(Fi.data),:);
-                YESNO(i,1) = any(find(any(0>monomtable,2) | any(monomtable-fix(monomtable),2)));
-            end
+            Fi = vertcat(F.clauses{:});
+            monomtable = yalmip('monomtable');
+            
+%             for i = 1:length(F.clauses)
+%                 Fi = F.clauses{i};
+%                 monomtable = yalmip('monomtable');
+%                 monomtable = monomtable(getvariables(Fi.data),:);
+%                 YESNO(i,1) = any(find(any(0>monomtable,2) | any(monomtable-fix(monomtable),2)));
+%             end
         case 'binary'
             for i = 1:length(F.clauses)
                 Fi = F.clauses{i};
