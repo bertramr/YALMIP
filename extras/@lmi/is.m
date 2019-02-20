@@ -130,8 +130,10 @@ else
         case 'sigmonial'
             Fi = vertcat(F.clauses{:});
             monomtable = yalmip('monomtable');
+            mt_is_negative = any(0>monomtable,2);
+            mt_has_remainder = any(rem(monomtable,1),2);
             vars = arrayfun(@(x) getvariables(x.data), Fi, 'UniformOutput', false);
-            YESNO(:,1) = cellfun(@(x) privissigmonialfunc(monomtable, x), vars);
+            YESNO(:,1) = cellfun(@(x) any(find(mt_is_negative(x) | mt_has_remainder(x))), vars);
 %             for i = 1:length(F.clauses)
 %                 Fi = F.clauses{i};
 %                 monomtable = yalmip('monomtable');
@@ -215,12 +217,4 @@ else
 end
 
 YESNO = full(YESNO);
-end
-
-function YESNO = privissigmonialfunc(monomtable, vars)
-monomtable = monomtable(vars, :);
-part1 = any(0>monomtable,2);
-part2 = any(rem(monomtable,1),2);
-findpart1or2 = find(part1 | part2);
-YESNO(1,1) = any(findpart1or2);
 end
