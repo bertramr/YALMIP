@@ -219,5 +219,8 @@ end
 
 function YESNO = privissigmonialfunc(monomtable, vars)
 monomtable = monomtable(vars, :);
-YESNO(1,1) = any(find(any(0>monomtable,2) | any(monomtable-fix(monomtable),2)));
+part1 = any(0>monomtable,2);
+part2 = any(rem(monomtable,1),2);
+findpart1or2 = find(part1 | part2);
+YESNO(1,1) = any(findpart1or2);
 end
