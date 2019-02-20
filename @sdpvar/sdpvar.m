@@ -48,13 +48,18 @@ function sys = sdpvar(varargin)
 % Turn this on if you want to use factor tracking (i.e, the solver STRUL)
 global FACTORTRACKING 
 FACTORTRACKING = 0;
+persistent GEM_IN_PATH
 
 superiorto('double');
+if isempty(GEM_IN_PATH) || GEM_IN_PATH
 try 
  superiorto('sgem');
  superiorto('gem');
+ GEM_IN_PATH = true;
 catch
  % GEM not in path
+ GEM_IN_PATH = false;
+end
 end
 if nargin==0
     sys = sdpvar(1,1);
