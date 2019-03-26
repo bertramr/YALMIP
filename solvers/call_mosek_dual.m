@@ -1,4 +1,4 @@
-function [x,D_struc,problem,r,res,solvertime,prob] = call_mosek_lpqpsocpsdpdual(model)
+function [x,D_struc,problem,r,res,solvertime,prob] = call_mosek_dual(model)
 
 % Convert if the caller is bnb or bmibnb which might have appended bounds
 % Sure, we could setup model with bounds, but... 
@@ -22,10 +22,14 @@ if model.K.q(1)>0 || model.K.e > 0
 end
 
 if model.K.q(1)>0
+    nq = length(model.K.q);
+    prob.cones.type = zeros(nq, 1);
+    prob.cones.subptr = zeros(nq, 1);
+    prob.cones.sub = zeros(sum(model.K.q), 1);
+    top0 = top;
     for i = 1:length(model.K.q)
-        prob.cones.type = [prob.cones.type 0];
-        prob.cones.subptr = [prob.cones.subptr length(prob.cones.sub)+1];
-        prob.cones.sub = [prob.cones.sub top+1:top+model.K.q(i)];        
+        prob.cones.subptr(i) = top - top0 + 1;
+        prob.cones.sub(top-top0+1:top-top0+model.K.q(i)) = top+1:top+model.K.q(i);
         top = top + model.K.q(i);
     end
 end
@@ -52,8 +56,12 @@ end
 
 try
     x = res.sol.itr.y;
-catch    
-    x = nan(length(model.c),1);    
+catch   
+    if isequal(model.options.mosek.MSK_IPAR_OPTIMIZER,'MSK_OPTIMIZER_FREE_SIMPLEX')
+        x = res.sol.bas.y;
+    else
+        x = nan(length(model.c),1);    
+    end
 end
 
 if model.options.saveduals & ~isempty(x)
@@ -99,6 +107,9 @@ function problem = MosekYALMIPError(res)
 
 if res.rcode == 2001
     problem = 1;
+    return
+elseif res.rcode == 1305
+    problem = -4;
     return
 elseif res.rcode == 10007
     problem = 16;
